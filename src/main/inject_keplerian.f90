@@ -234,11 +234,14 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
                      (cb*cosphi + sb*zi/rinj)*sg + cg*sinphi, &
                       -sb*cosphi + cb*zi/rinj/) 
 
+       vxyzi = vphi*(/-sinphi*cg*cb - cosphi*sg, &
+                     cosphi*cg - sinphi*cb*sg, &
+                     sinphi*sb/) 
 
        u = 1.5*cs**2
 
        i_part = npart + 1! all particles are new
-       call add_or_update_particle(igas, xyzi+x0, vxyz+v0, hguess, u, i_part, npart, npartoftype, xyzh, vxyzu)
+       call add_or_update_particle(igas, xyzi+x0, vxyzi+v0, hguess, u, i_part, npart, npartoftype, xyzh, vxyzu)
        i_part = npart + 1! all particles are new
        call add_or_update_particle(igas, -xyzi+x0, -vxyzi+v0, hguess, u, i_part, npart, npartoftype, xyzh, vxyzu)
     enddo
