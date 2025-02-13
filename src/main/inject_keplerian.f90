@@ -84,14 +84,18 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  real,    intent(out)   :: dtinject
  real :: Minject,Mdot_code
  real :: frac_extra,deltat
- real :: x0(3),v0(3),mstar,r2min,dr2,hguess,phi,cosphi,sinphi,r2,xyzi(3),vxyz(3),u
+ real :: x0(3),v0(3),mstar,r2min,dr2,hguess,phi,cosphi,sinphi,r2,xyzi(3),vxyzi(3),u
  real :: vkep,vphi,zi,cs,bigH
  real :: dum_ponrho,dum_rho,dum_temp
- integer :: i,k,i_part,ninject
+ real :: pmass, Lx, Ly, Lz, Lmag, rmin, rmax, rad_here, tilt, twist, cg, cb, sg, sb
+ integer :: i,k,i_part,ninject,ncount
  !
  ! convert mass loss rate from Msun/yr to code units
  !
  Mdot_code = Mdot*(solarm/umass)*(utime/years)
+
+ ! define pmass
+  pmass = massoftype(igas)
 
  !
  ! get central mass
@@ -114,16 +118,62 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  ! for the smoothing length, take it from the closest existing particle to the injection radius
  hguess = 1.
  r2min = huge(r2min)
+ ! for the rinj bin
+ rmin = rinj*(1 - HonR_inj)
+ rmax = rinj*(1 + HonR_inj)
+ ncount = 0
+ Lx = 0.
+ Ly = 0.
+ Lz = 0.
+
  do i=1,npart
     if (.not.isdead_or_accreted(xyzh(4,i))) then
-       r2 = (xyzh(1,i)-x0(1))**2 + (xyzh(2,i)-x0(2))**2
+       r2 = (xyzh(1,i)-x0(1))**2 + (xyzh(2,i)-x0(2))**2 + (xyzh(3,i)-x0(3))**2
        dr2 = abs(r2 - rinj*rinj)
        if (dr2 < r2min) then
           hguess = xyzh(4,i)
           r2min = dr2
        endif
+
+       ! Caluclate average angular momentum around Rinj
+       rad_here = sqrt(r2)
+       if ((rad_here < rmax) .and. (rad_here > rmin)) then
+         ncount = ncount + 1
+         Lx = Lx + pmass*(xyzh(2,i)*vxyzu(3,i) - xyzh(3,i)*vxyzu(2,i))
+         Ly = Ly + pmass*(xyzh(3,i)*vxyzu(1,i) - xyzh(1,i)*vxyzu(3,i))
+         Lz = Lz + pmass*(xyzh(1,i)*vxyzu(2,i) - xyzh(2,i)*vxyzu(1,i))
+       endif
+
     endif
  enddo
+
+ ! now average the angular momentum at the injection radius
+ if (ncount > 0) then
+   Lx = Lx/ncount
+   Ly = Ly/ncount
+   Lz = Lz/ncount
+ else
+   Lx = 0.
+   Ly = 0.
+   Lz = 0.
+ endif
+
+ ! and unit angular momentum vectors
+ Lmag = sqrt(Lx**2 + Ly**2 + Lz**2)
+ if (ncount > 0) then
+   Lx = Lx/Lmag
+   Ly = Ly/Lmag
+   Lz = Lz/Lmag
+ endif
+
+ ! and thus tilt and twist
+ if (ncount > 0) then
+    tilt = acos(Lz)
+    twist = atan2(Ly,Lx)
+ else
+   tilt = 0.
+   twist = 0.
+ endif
 
  vkep = sqrt(mstar/rinj)
 
@@ -151,15 +201,15 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  !
  ! work out number of particles by divide by mass of gas particles
  !
- ninject = int(Minject/massoftype(igas))
+ ninject = int(Minject/pmass)
  !
  ! for the residual, roll the dice
  !
- frac_extra = Minject/massoftype(igas) - 2*(ninject/2)
+ frac_extra = Minject/pmass - 2*(ninject/2)
  if (ran2(iseed) < 0.5*frac_extra) ninject = ninject + 2
 
  if (iverbose >= 2) print*,' injecting ',&
-                    ninject,Minject/massoftype(igas),massoftype(igas)
+                    ninject,Minject/pmass,pmass
 
  if (ninject > 0) then
     do k=1,ninject/2
@@ -170,21 +220,27 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
 
        cosphi = cos(phi)
        sinphi = sin(phi)
+       cb = cos(tilt)
+       sb = sin(tilt)
+       cg = cos(twist)
+       sg = sin(twist)
 
        bigH = cs*rinj/vkep
        zi = gauss_random(iseed)*bigH
 
        vphi = vkep*(1. - (zi/rinj)**2)**(-0.75)  ! see Martire et al. (2024)
 
-       xyzi = (/rinj*cosphi,rinj*sinphi,zi/)
-       vxyz = (/-vphi*sinphi, vphi*cosphi, 0./)
+       xyzi = rinj*(/(cb*cosphi + sb*zi/rinj)*cg - sg*sinphi, &
+                     (cb*cosphi + sb*zi/rinj)*sg + cg*sinphi, &
+                      -sb*cosphi + cb*zi/rinj/) 
+
 
        u = 1.5*cs**2
 
        i_part = npart + 1! all particles are new
        call add_or_update_particle(igas, xyzi+x0, vxyz+v0, hguess, u, i_part, npart, npartoftype, xyzh, vxyzu)
        i_part = npart + 1! all particles are new
-       call add_or_update_particle(igas, -xyzi+x0, -vxyz+v0, hguess, u, i_part, npart, npartoftype, xyzh, vxyzu)
+       call add_or_update_particle(igas, -xyzi+x0, -vxyzi+v0, hguess, u, i_part, npart, npartoftype, xyzh, vxyzu)
     enddo
  endif
 
@@ -221,7 +277,7 @@ subroutine write_options_inject(iunit)
  if (nptmass >= 1) then
     call write_inopt(follow_sink,'follow_sink','injection radius is relative to sink particle 1',iunit)
  endif
-
+ 
 end subroutine write_options_inject
 
 !-----------------------------------------------------------------------
