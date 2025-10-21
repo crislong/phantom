@@ -30,6 +30,7 @@ module inject
 
  real :: mdot = 0.
  real :: rinj = 25.
+ real :: rco = 25.
  real :: HonR_inj = 0.05
  real :: sigma_inj = 0.0
  logical :: follow_sink = .true.
@@ -127,7 +128,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     endif
  enddo
 
- vkep = sqrt(mstar/rinj)
+ vkep = sqrt(mstar/rco)
 
  ! for the temperature, call equation of state to get cs at this radius
  if (maxvxyzu >= 4) then
@@ -224,6 +225,7 @@ subroutine write_options_inject(iunit)
 
  call write_inopt(mdot,'mdot','mass injection rate [msun/yr]',iunit)
  call write_inopt(rinj,'rinj','injection radius',iunit)
+ call write_inopt(rco,'rco','corotation radius',iunit)
  call write_inopt(sigma_inj,'sigma_inj','width of gaussian injection profile, =0 is ring injection',iunit)
  if (maxvxyzu >= 4) call write_inopt(HonR_inj,'HonR_inj','aspect ratio to give temperature at rinj',iunit)
  if (nptmass >= 1) call write_inopt(follow_sink,'follow_sink','injection radius is relative to sink particle 1',iunit)
@@ -243,6 +245,7 @@ subroutine read_options_inject(db,nerr)
 
  call read_inopt(mdot,'mdot',db,errcount=nerr,min=0.)
  call read_inopt(rinj,'rinj',db,errcount=nerr,min=0.)
+ call read_inopt(rco,'rco',db,errcount=nerr,min=0.)
  call read_inopt(sigma_inj,'sigma_inj',db,errcount=nerr,min=0.)
  if (maxvxyzu >= 4) call read_inopt(HonR_inj,'HonR_inj',db,errcount=nerr,min=0.)
  if (nptmass >= 1) call read_inopt(follow_sink,'follow_sink',db,errcount=nerr,default=.true.)
