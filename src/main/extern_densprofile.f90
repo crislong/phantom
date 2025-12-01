@@ -69,6 +69,7 @@ subroutine densityprofile_force(xi,yi,zi,fxi,fyi,fzi,phi)
 
 end subroutine densityprofile_force
 
+
 !----------------------------------------------
 !+
 !  load_extern_densityprofile
@@ -114,6 +115,7 @@ subroutine load_extern_densityprofile(ierr)
  endif
 
 end subroutine load_extern_densityprofile
+
 
 ! Read tabulated r, rho from file
 subroutine read_rhotab(filename, rsize, rtab, rhotab, nread, polyk, gamma, rhoc, ierr)

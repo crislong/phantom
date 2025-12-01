@@ -20,7 +20,7 @@ module raytracer
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: dim, healpix, kernel, neighkdtree, part, units
+! :Dependencies: healpix, kernel, linklist, part, units
 !
  use healpix
 
@@ -83,7 +83,7 @@ end subroutine get_all_tau
  !+
  !---------------------------------------------------------------------------------
 subroutine get_all_tau_single(npart, primary, Rstar, xyzh, kappa, Rinject, order, tau)
- use part, only:isdead_or_accreted
+ use part, only : isdead_or_accreted
  integer, intent(in) :: npart,order
  real, intent(in)    :: primary(3), kappa(:), Rstar, Rinject, xyzh(:,:)
  real, intent(out)   :: tau(:)
@@ -118,6 +118,7 @@ subroutine get_all_tau_single(npart, primary, Rstar, xyzh, kappa, Rinject, order
  enddo
  !$omp enddo
  !$omp end parallel
+
 
  !_----------------------------------------------
  ! DETERMINE the optical depth for each particle
@@ -162,7 +163,7 @@ end subroutine get_all_tau_single
  !+
  !--------------------------------------------------------------------------
 subroutine get_all_tau_companion(npart, primary, Rstar, xyzh, kappa, Rinject, companion, Rcomp, order, tau)
- use part, only:isdead_or_accreted
+ use part, only : isdead_or_accreted
  integer, intent(in) :: npart, order
  real, intent(in)    :: primary(3), companion(3), kappa(:), Rstar, Rinject, xyzh(:,:), Rcomp
  real, intent(out)   :: tau(:)
@@ -311,6 +312,7 @@ subroutine interpolate_tau(nsides, vec, rays_tau, rays_dist, rays_dim, tau)
  enddo
  tau = tau / weight
 end subroutine interpolate_tau
+
 
  !--------------------------------------------------------------------------
  !+
@@ -473,10 +475,9 @@ end function hasNext
  !+
  !--------------------------------------------------------------------------
 subroutine find_next(inpoint, h, ray, xyzh, kappa, dtaudr, distance, inext)
- use neighkdtree, only:getneigh_pos,leaf_is_active,listneigh
- use kernel,      only:radkern,cnormk,wkern
- use part,        only:hfact,rhoh,massoftype,igas
- use dim,         only:maxpsph
+ use linklist, only:getneigh_pos,ifirstincell,listneigh
+ use kernel,   only:radkern,cnormk,wkern
+ use part,     only:hfact,rhoh,massoftype,igas
  real,    intent(in)    :: xyzh(:,:), kappa(:), inpoint(:), ray(:), h
  integer, intent(inout) :: inext
  real,    intent(out)   :: distance, dtaudr
@@ -484,7 +485,7 @@ subroutine find_next(inpoint, h, ray, xyzh, kappa, dtaudr, distance, inext)
  integer, parameter :: nmaxcache = 0
  real  :: xyzcache(0,nmaxcache)
 
- integer  :: nneigh, i, prev,j
+ integer  :: nneigh, i, prev
  real     :: dmin, vec(3), dr, raydistance, q, norm_sq
 
  prev     = inext
@@ -492,29 +493,27 @@ subroutine find_next(inpoint, h, ray, xyzh, kappa, dtaudr, distance, inext)
  distance = 0.
 
  !for a given point (inpoint), returns the list of neighbouring particles (listneigh) within a radius h*radkern
- call getneigh_pos(inpoint,0.,h*radkern,listneigh,nneigh,xyzcache,nmaxcache,leaf_is_active)
+ call getneigh_pos(inpoint,0.,h*radkern,3,listneigh,nneigh,xyzh,xyzcache,nmaxcache,ifirstincell)
 
  dtaudr = 0.
  dmin = huge(0.)
  !loop over all neighbours
  do i=1,nneigh
-    j = listneigh(i)
-    if (j > maxpsph) cycle
-    vec     = xyzh(1:3,j) - inpoint
+    vec     = xyzh(1:3,listneigh(i)) - inpoint
     norm_sq = dot_product(vec,vec)
-    q       = sqrt(norm_sq)/xyzh(4,j)
+    q       = sqrt(norm_sq)/xyzh(4,listneigh(i))
     !add optical depth contribution from each particle
-    dtaudr = dtaudr+wkern(q*q,q)*kappa(j)*rhoh(xyzh(4,j), massoftype(igas))
+    dtaudr = dtaudr+wkern(q*q,q)*kappa(listneigh(i))*rhoh(xyzh(4,listneigh(i)), massoftype(igas))
 
     ! find the next particle : among the neighbours find the particle located the closest to the ray
-    if (j  /=  prev) then
+    if (listneigh(i)  /=  prev) then
        dr = dot_product(vec,ray) !projected distance along the ray
        if (dr>0.) then
           !distance perpendicular to the ray direction
           raydistance = norm_sq - dr**2
           if (raydistance < dmin) then
              dmin     = raydistance
-             inext    = j
+             inext    = listneigh(i)
              distance = dr
           endif
        endif

@@ -18,7 +18,6 @@ module moddump
 !   vectorutils
 !
  implicit none
- character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 
@@ -56,6 +55,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  call prompt('Enter position angle of the ascending node of the perturber: ', big_omega, 0.)
  call prompt('Enter inclination of the perturber: ', incl, 0.)
  call prompt('Enter time between dumps as fraction of flyby time:', dtmax, 0.)
+
 
  nptmass = nptmass + 1
  mtot = star_m + mperturber ! total mass
@@ -100,6 +100,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  period = get_T_flyby(star_m,mperturber,dma,n0) * dtmax ! computing time between dumps in code units
 
  write(*,*) 'Time between dumps in code units to put in *.in file', period
+
+ return
 
 end subroutine modify_dump
 

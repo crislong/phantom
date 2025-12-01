@@ -91,6 +91,7 @@ subroutine power_fourier(npts,x,dat,omega,power)
  enddo
  power= sqrt(sum1**2 + sum2**2)/real(npts)
 
+ return
 end subroutine power_fourier
 
 !----------------------------------------------------------
@@ -147,6 +148,7 @@ subroutine power_lomb(npts,x,dat,datmean,datvar,omega,power)
  power = 1./(datvar)*(term1_numerator**2/term1_denominator + &
                          term2_numerator**2/term2_denominator)
 
+ return
 end subroutine power_lomb
 
 !-------------------------------------------------
@@ -190,6 +192,7 @@ subroutine mean_variance(x,npts,xmean,xvariance)
  enddo
  xvariance = (xvariance - roundoff**2/npts)/real(npts-1)
 
+ return
 end subroutine mean_variance
 
 end module powerspectrums

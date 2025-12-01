@@ -14,10 +14,9 @@ module moddump
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: dim, growth, io_control, part, prompting
+! :Dependencies: dim, growth, part, prompting, timestep
 !
  implicit none
- character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 
@@ -25,7 +24,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use dim,            only:use_dust,use_dustgrowth
  use part,           only:delete_dead_or_accreted_particles
  use prompting,      only:prompt
- use io_control,     only:nmax
+ use timestep,       only:nmax
  use growth,         only:bin_to_multi
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)

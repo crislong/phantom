@@ -257,7 +257,7 @@ subroutine set_hier_multiple(m1,m2,semimajoraxis,eccentricity, &
                       accretion_radius1,accretion_radius2, &
                       xyzmh_ptmass,vxyz_ptmass,nptmass,ierr,omega_corotate,&
                       posang_ascnode,arg_peri,incl,f,verbose,subst, prefix)
- use setbinary, only:set_binary
+ use setbinary, only: set_binary
  real,    intent(in)    :: m1,m2
  real,    intent(in)    :: semimajoraxis,eccentricity
  real,    intent(in)    :: accretion_radius1,accretion_radius2
@@ -307,6 +307,7 @@ subroutine set_hier_multiple(m1,m2,semimajoraxis,eccentricity, &
     !print*,data(:,1)
     !print*,data(:,2)
     !print*,hier_prefix
+
 
     call find_data_index(hier_prefix, subst_index, prefix, ierr) ! QUI VOGLIO DATA INDEX
 
@@ -452,7 +453,7 @@ subroutine set_multiple(m1,m2,semimajoraxis,eccentricity, &
                       accretion_radius1,accretion_radius2, &
                       xyzmh_ptmass,vxyz_ptmass,nptmass,ierr,omega_corotate,&
                       posang_ascnode,arg_peri,incl,f,verbose,subst, prefix)
- use setbinary, only:set_binary
+ use setbinary, only: set_binary
  real,    intent(in)    :: m1,m2
  real,    intent(in)    :: semimajoraxis,eccentricity
  real,    intent(in)    :: accretion_radius1,accretion_radius2
@@ -755,6 +756,7 @@ subroutine generate_hierarchy_string(nsinks)
 
 end subroutine generate_hierarchy_string
 
+
 subroutine print_chess_logo()!id)
  !use io,               only:master
  !integer,           intent(in) :: id
@@ -794,11 +796,13 @@ subroutine print_chess_logo()!id)
  print "(/,65('-'),1(/,a),/,65('-'),/)",&
          '  Welcome to CHESS (Complete Hierarchical Endless System Setup)'
 
+
  !    print "(/,65('-'),1(/,a),/,1(a),/,65('-'),/)",&
  !         '  Welcome to CHESS (Complete Hierarchical Endless System Setup)', &
  !         '        simulate the universe as a hierarchical system'
 
 ! endif
 end subroutine print_chess_logo
+
 
 end module sethierarchical

@@ -24,6 +24,7 @@ program tabulate_metric
  integer :: ierr
  character(len=64) :: metric_file = 'tabuled_metric.dat'
 
+
  ! Init grid and tabulated metric
  call initialize_grid()
 

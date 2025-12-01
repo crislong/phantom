@@ -16,18 +16,17 @@ module forcing
 ! :Owner: Daniel Price
 !
 ! :Runtime parameters:
-!   - correct_bulk_motion : *correct bulk motion?*
-!   - istir               : *switch to turn stirring on or off at runtime*
-!   - st_amplfac          : *amplitude factor for stirring of turbulence*
-!   - st_decay            : *correlation time for driving*
-!   - st_dtfreq           : *frequency of stirring*
-!   - st_energy           : *energy input/mode*
-!   - st_seed             : *random number generator seed*
-!   - st_solweight        : *solenoidal weight*
-!   - st_spectform        : *spectral form of stirring*
-!   - st_stirmax          : *maximum stirring wavenumber*
-!   - st_stirmin          : *minimum stirring wavenumber*
-!   - stir_from_file      : *stir using pre-generated file?*
+!   - istir          : *switch to turn stirring on or off at runtime*
+!   - st_amplfac     : *amplitude factor for stirring of turbulence*
+!   - st_decay       : *correlation time for driving*
+!   - st_dtfreq      : *frequency of stirring*
+!   - st_energy      : *energy input/mode*
+!   - st_seed        : *random number generator seed*
+!   - st_solweight   : *solenoidal weight*
+!   - st_spectform   : *spectral form of stirring*
+!   - st_stirmax     : *maximum stirring wavenumber*
+!   - st_stirmin     : *minimum stirring wavenumber*
+!   - stir_from_file : *stir using pre-generated file?*
 !
 ! :Dependencies: boundary, datafiles, fileutils, infile_utils, io,
 !   mpiutils, part
@@ -53,8 +52,6 @@ module forcing
  !Options - give these default values to write to file
  integer, public  :: istir = 1
  logical, public  :: stir_from_file = .true.
- logical, public  :: correct_bulk_motion = .true. ! option is stored here but used in evolve.f90
- logical, public  :: correct_mean_force = .false.
  !logical,save  :: st_computeDt
  real, public     :: st_decay = 0.05
  real, public     :: st_energy = 2.0
@@ -68,9 +65,16 @@ module forcing
  real, public     :: st_amplfac = 1.0
  integer, public  :: st_spectform = 1
 
- integer, allocatable :: st_randseed(:)
- integer :: st_seedLen
+ !!namelist /force/ istir,st_spectform,st_stirmax,st_stirmin, &
+ !                 st_energy,st_decay,st_solweight,st_dtfreq,st_seed
+ !private :: force
+
+ integer, save, allocatable :: st_randseed(:)
+ integer, save                            :: st_seedLen
  integer, parameter :: ndim = 3
+
+#define N_DIM 3
+!!!!#undef CORRECT_MEAN_FORCE
 
  character(len=*), parameter :: forcingfile = 'forcing.dat'
 
@@ -91,7 +95,7 @@ contains
 !!
 !! ARGUMENTS
 !!
-!! parameters:
+!! parameterS
 !!
 !!   These are the runtime parameters used in the Stir unit.
 !!
@@ -126,11 +130,13 @@ contains
 !!***
 
 subroutine init_forcing(dumpfile,infile,time)
- use boundary,     only:Lx=>dxbound,Ly=>dybound,Lz=>dzbound
- use io,           only:id,master,fatal,error,die,iprint,iverbose
+ use boundary, only:dxbound,dybound,dzbound, Lx=>dxbound,Ly=>dybound,Lz=>dzbound
+ use io, only:id,master,fatal,error,die,iprint,iverbose
  use infile_utils, only:get_inopt
- use part,         only:vxyzu
- use fileutils,    only:numfromfile
+ use part, only:vxyzu
+ use fileutils, only:numfromfile
+
+
  character(len=*), intent(in) :: dumpfile,infile
  real,             intent(in) :: time
  logical                           :: restart
@@ -140,14 +146,35 @@ subroutine init_forcing(dumpfile,infile,time)
  real                              :: timeinfile
  real, parameter                   :: twopi = 6.283185307
  real, parameter                   :: amin = 0.0 ! the amplitude of the modes at kmin and kmax for a parabolic Fourier spectrum wrt 1.0 at the centre kc
+ !logical                           :: iexist
+ !character(len=len(infile)+5)      :: drvfile
  logical, parameter                :: Debug = .false.
 
  if (istir == 0) return
 
+!  call get_parm_from_context('st_spectform', st_spectform) ! 0 is peak, 1 is paraboloid
+!  call get_parm_from_context('st_decay', st_decay)
+!  call get_parm_from_context('st_energy', st_energy)
+!  call get_parm_from_context('st_stirmin', st_stirmin)
+!  call get_parm_from_context('st_stirmax', st_stirmax)
+!  call get_parm_from_context('st_solweight', st_solweight)
+!  call get_parm_from_context('st_seed', st_seed)
+!  call get_parm_from_context('st_freq', st_freq)
+!  call get_parm_from_context('st_computeDt', st_computeDt)
+
  !initialize some variables, allocate randseed
+
  st_OUvar         = sqrt(st_energy/st_decay)
  kc               = 0.5*(st_stirmin+st_stirmax)
- st_solweightnorm = sqrt(3.0/ndim)*sqrt(3.0)*1.0/sqrt(1.0-2.0*st_solweight+ndim*st_solweight**2) ! this makes the rms force const irrespective of the solenoidal weight
+#if N_DIM == 3
+ st_solweightnorm = sqrt(3.0/3.0)*sqrt(3.0)*1.0/sqrt(1.0-2.0*st_solweight+3.0*st_solweight**2.0) ! this makes the rms force const irrespective of the solenoidal weight
+#endif
+#if N_DIM == 2
+ st_solweightnorm = sqrt(3.0/2.0)*sqrt(3.0)*1.0/sqrt(1.0-2.0*st_solweight+2.0*st_solweight**2.0) ! this makes the rms force const irrespective of the solenoidal weight
+#endif
+#if N_DIM == 1
+ st_solweightnorm = sqrt(3.0/1.0)*sqrt(3.0)*1.0/sqrt(1.0-2.0*st_solweight+1.0*st_solweight**2.0) ! this makes the rms force const irrespective of the solenoidal weight
+#endif
 
  ikxmin = 0
  ikymin = 0
@@ -156,10 +183,19 @@ subroutine init_forcing(dumpfile,infile,time)
  ikxmax = 20
  ikymax = 0
  ikzmax = 0
- if (ndim > 1) ikymax = 8
- if (ndim > 2) ikzmax = 8
+#if N_DIM > 1
+ ikymax = 8
+#if N_DIM > 2
+ ikzmax = 8
+#endif
+#endif
+
+ !Lx = dxbound
+ !Ly = dybound
+ !Lz = dzbound
 
  st_nmodes = 0
+ !call add_parm_to_context (global_parm_context, "st_nmodes", st_nmodes)
 
  do ikx = ikxmin, ikxmax
     kx = twopi * ikx / Lx
@@ -192,43 +228,47 @@ subroutine init_forcing(dumpfile,infile,time)
              st_mode(2,st_nmodes) = ky
              st_mode(3,st_nmodes) = kz
 
-             if (ndim > 1) then
-                st_nmodes = st_nmodes + 1
+#if N_DIM > 1
+             st_nmodes = st_nmodes + 1
 
-                if (st_spectform == 0) st_ampl(st_nmodes) = 1.0
-                if (st_spectform == 1) st_ampl(st_nmodes) = 4.0*(amin-1.0)/((st_stirmax-st_stirmin)**2.0)*((k-kc)**2.0)+1.0
-                if (st_spectform == 2) st_ampl(st_nmodes) = (st_stirmin/k)**(5./3.)
-                if (id==master .and. Debug) print *, "init_stir:  st_ampl(",st_nmodes,") = ", st_ampl(st_nmodes)
+             if (st_spectform == 0) st_ampl(st_nmodes) = 1.0
+             if (st_spectform == 1) st_ampl(st_nmodes) = 4.0*(amin-1.0)/((st_stirmax-st_stirmin)**2.0)*((k-kc)**2.0)+1.0
+             if (st_spectform == 2) st_ampl(st_nmodes) = (st_stirmin/k)**(5./3.)
+             if (id==master .and. Debug) print *, "init_stir:  st_ampl(",st_nmodes,") = ", st_ampl(st_nmodes)
 
-                st_mode(1,st_nmodes) = kx
-                st_mode(2,st_nmodes) =-ky
-                st_mode(3,st_nmodes) = kz
-             endif
+             st_mode(1,st_nmodes) = kx
+             st_mode(2,st_nmodes) =-ky
+             st_mode(3,st_nmodes) = kz
+#endif
 
-             if (ndim > 2) then
-                st_nmodes = st_nmodes + 1
+#if N_DIM > 2
+             st_nmodes = st_nmodes + 1
 
-                if (st_spectform == 0) st_ampl(st_nmodes) = 1.0
-                if (st_spectform == 1) st_ampl(st_nmodes) = 4.0*(amin-1.0)/((st_stirmax-st_stirmin)**2.0)*((k-kc)**2.0)+1.0
-                if (st_spectform == 2) st_ampl(st_nmodes) = (st_stirmin/k)**(5./3.)
-                if (id==master .and. Debug) print *, "init_stir:  st_ampl(",st_nmodes,") = ", st_ampl(st_nmodes)
+             if (st_spectform == 0) st_ampl(st_nmodes) = 1.0
+             if (st_spectform == 1) st_ampl(st_nmodes) = 4.0*(amin-1.0)/((st_stirmax-st_stirmin)**2.0)*((k-kc)**2.0)+1.0
+             if (st_spectform == 2) st_ampl(st_nmodes) = (st_stirmin/k)**(5./3.)
+             if (id==master .and. Debug) print *, "init_stir:  st_ampl(",st_nmodes,") = ", st_ampl(st_nmodes)
 
-                st_mode(1,st_nmodes) = kx
-                st_mode(2,st_nmodes) = ky
-                st_mode(3,st_nmodes) =-kz
+             st_mode(1,st_nmodes) = kx
+             st_mode(2,st_nmodes) = ky
+             st_mode(3,st_nmodes) =-kz
 
-                st_nmodes = st_nmodes + 1
+             st_nmodes = st_nmodes + 1
 
-                if (st_spectform == 0) st_ampl(st_nmodes) = 1.0
-                if (st_spectform == 1) st_ampl(st_nmodes) = 4.0*(amin-1.0)/((st_stirmax-st_stirmin)**2.0)*((k-kc)**2.0)+1.0
-                if (st_spectform == 2) st_ampl(st_nmodes) = (st_stirmin/k)**(5./3.)
-                if (id==master .and. Debug) print *, "init_stir:  st_ampl(",st_nmodes,") = ", st_ampl(st_nmodes)
+             if (st_spectform == 0) st_ampl(st_nmodes) = 1.0
+             if (st_spectform == 1) st_ampl(st_nmodes) = 4.0*(amin-1.0)/((st_stirmax-st_stirmin)**2.0)*((k-kc)**2.0)+1.0
+             if (st_spectform == 2) st_ampl(st_nmodes) = (st_stirmin/k)**(5./3.)
+             if (id==master .and. Debug) print *, "init_stir:  st_ampl(",st_nmodes,") = ", st_ampl(st_nmodes)
 
-                st_mode(1,st_nmodes) = kx
-                st_mode(2,st_nmodes) =-ky
-                st_mode(3,st_nmodes) =-kz
-             endif
+             st_mode(1,st_nmodes) = kx
+             st_mode(2,st_nmodes) =-ky
+             st_mode(3,st_nmodes) =-kz
+#endif
+
+             !call set_parm_in_context(global_parm_context, "st_nmodes", st_nmodes)
+
           endif
+
        enddo
     enddo
  enddo
@@ -238,6 +278,7 @@ subroutine init_forcing(dumpfile,infile,time)
 
  !if we are starting from scratch
  if (.not. restart) then
+
     vxyzu = 0.
     tprev = -1.
     if (id==master .and. iverbose >= 2) write(iprint,*) 'SETTING VELS TO ZERO'
@@ -275,6 +316,7 @@ subroutine init_forcing(dumpfile,infile,time)
        if (ierr /= 0) call fatal('init_forcing','error reading forcing file')
     endif
 
+    !call get_parm_from_context(global_parm_context, "st_nmodes", st_nmodes)
     if (id==master) write(iprint,*) 'init_stir:  restarting...  st_nmodes      = ', st_nmodes
 
  endif ! restart
@@ -291,12 +333,13 @@ subroutine init_forcing(dumpfile,infile,time)
     write(iprint,*) ' minimum wavenumber   = ', st_stirmin
     write(iprint,*) ' maximum wavenumber   = ', st_stirmax
     write(iprint,*) ' original random seed = ', st_seed
-    if (correct_bulk_motion .or. correct_mean_force) then
-       write(iprint,*) ' bulk motion correction is ON'
-    else
-       write(iprint,*) ' bulk motion correction is OFF'
-    endif
+#ifdef CORRECT_MEAN_FORCE
+    write(iprint,*) ' bulk motion correction is ON'
+#else
+    write(iprint,*) ' bulk motion correction is OFF'
+#endif
  endif
+
 
  ! Then convert those into actual Fourier phases:
  call st_calcPhases()
@@ -343,7 +386,6 @@ subroutine write_options_forcing(iunit)
     call write_inopt(st_seed,'st_seed','random number generator seed',iunit)
  endif
  call write_inopt(st_amplfac,'st_amplfac','amplitude factor for stirring of turbulence',iunit)
- call write_inopt(correct_bulk_motion,'correct_bulk_motion','correct bulk motion?',iunit)
 
 end subroutine write_options_forcing
 
@@ -369,27 +411,54 @@ end subroutine write_options_forcing
 !!
 !!***
 
-subroutine read_options_forcing(db,nerr)
- use infile_utils, only:inopts,read_inopt
- type(inopts), intent(inout) :: db(:)
- integer,      intent(inout) :: nerr
+subroutine read_options_forcing(name,valstring,igot,igotall,ierr)
+ character(len=*), intent(in)  :: name,valstring
+ logical,          intent(out) :: igot,igotall
+ integer,          intent(out) :: ierr
+ integer, save                :: ngot = 0
+ integer :: nrequired
 
- call read_inopt(istir,'istir',db,errcount=nerr,min=0,max=1)
- call read_inopt(stir_from_file,'stir_from_file',db,errcount=nerr)
- if (.not. stir_from_file) then
-    call read_inopt(st_spectform,'st_spectform',db,errcount=nerr)
-    call read_inopt(st_stirmax,'st_stirmax',db,min=0.,errcount=nerr)
-    call read_inopt(st_stirmin,'st_stirmin',db,min=0.,errcount=nerr)
-    call read_inopt(st_energy,'st_energy',db,min=0.,errcount=nerr)
-    call read_inopt(st_decay,'st_decay',db,min=0.,errcount=nerr)
-    call read_inopt(st_solweight,'st_solweight',db,min=0.,errcount=nerr)
-    call read_inopt(st_dtfreq,'st_dtfreq',db,min=0.,errcount=nerr)
-    call read_inopt(st_seed,'st_seed',db,errcount=nerr)
+ igot = .true.
+ select case(trim(name))
+ case('istir')
+    read(valstring,*,iostat=ierr) istir
+ case('stir_from_file')
+    read(valstring,*,iostat=ierr) stir_from_file
+ case('st_spectform')
+    read(valstring,*,iostat=ierr) st_spectform
+ case('st_stirmax')
+    read(valstring,*,iostat=ierr) st_stirmax
+ case('st_stirmin')
+    read(valstring,*,iostat=ierr) st_stirmin
+ case('st_energy')
+    read(valstring,*,iostat=ierr) st_energy
+ case('st_decay')
+    read(valstring,*,iostat=ierr) st_decay
+ case('st_solweight')
+    read(valstring,*,iostat=ierr) st_solweight
+ case('st_dtfreq')
+    read(valstring,*,iostat=ierr) st_dtfreq
+ case('st_seed')
+    read(valstring,*,iostat=ierr) st_seed
+ case('st_amplfac')
+    read(valstring,*,iostat=ierr) st_amplfac
+ case default
+    igot = .false.
+ end select
+
+ if (igot) ngot = ngot + 1
+
+ if (stir_from_file) then
+    nrequired = 2
+ else
+    nrequired = 10
  endif
- call read_inopt(st_amplfac,'st_amplfac',db,errcount=nerr)
- call read_inopt(correct_bulk_motion,'correct_bulk_motion',db,errcount=nerr)
+
+ igotall = .false.
+ if (ngot >= nrequired) igotall = .true.
 
 end subroutine read_options_forcing
+
 
 !! NAME
 !!
@@ -415,6 +484,7 @@ end subroutine read_options_forcing
 !!
 !!***
 
+
 subroutine write_forcingdump(tdump,dumpfile)
  use io, only:ifdump,error,iprint
  real,             intent(in) :: tdump
@@ -435,6 +505,9 @@ subroutine write_forcingdump(tdump,dumpfile)
     write(ifdump,*) st_akb
     write(ifdump,*) st_OUphases
     write(ifdump,*) st_ampl
+    !write(ifdump,*) tdump,t_turb,tprev,kmax,ifkmax,iseed
+    !write(ifdump,*) prank(1:3,1:ifkmax)
+    !write(ifdump,*) frank(1:3,1:ifkmax)
  endif
 
  close(unit=ifdump)
@@ -498,6 +571,7 @@ subroutine read_forcingdump(dumpfile,ierr)
 
 end subroutine read_forcingdump
 
+
 !! NAME
 !!
 !!  st_calcPhases
@@ -521,6 +595,7 @@ end subroutine read_forcingdump
 !!
 !!   modified for use in PhantomSPH by Daniel Price 2008
 !!***
+
 
 subroutine st_calcPhases()
 
@@ -568,16 +643,17 @@ subroutine st_calcPhases()
 
 end subroutine st_calcPhases
 
+
 !! NAME
 !!
 !!  st_ounoiseinit
 !!
 !! SYNOPSIS
 !!
-!!  st_ounoiseinit(integer, intent (IN)  :: vectorlength,
-!!                 integer, intent (IN)  :: iseed,
-!!                 real, intent (IN)  :: variance,
-!!                 real, intent (INOUT)  :: vector)
+!!  st_ounoiseinit(integer,intent (IN)  :: vectorlength,
+!!                 integer,intent (IN)  :: iseed,
+!!                 real,intent (IN)  :: variance,
+!!                 real,intent (INOUT)  :: vector)
 !!
 !! DESCRIPTION
 !!
@@ -686,6 +762,7 @@ end subroutine st_ounoiseinit
 !!
 !!***
 
+
 subroutine st_ounoiseupdate (vectorlength, vector, variance, dt, ts)
  real,    intent(in)    :: variance, dt, ts
  integer, intent(in)    :: vectorlength
@@ -726,8 +803,12 @@ end subroutine st_ounoiseupdate
 !!***
 
 subroutine st_calcAccel(npart,xyzh,fxyzu)
- use part,     only:iactive,iphase,ind_timesteps
+#ifdef IND_TIMESTEPS
+ use part, only:iactive,iphase
+#endif
+#ifdef CORRECT_MEAN_FORCE
  use mpiutils, only:reduceall_mpi
+#endif
  integer, intent(in)  :: npart
  real,    intent(in)  :: xyzh(:,:)
  real,    intent(out) :: fxyzu(:,:)
@@ -735,26 +816,31 @@ subroutine st_calcAccel(npart,xyzh,fxyzu)
  real                      :: ampl,kxxi,kyyi,kzzi,kdotx,fxi,fyi,fzi
  real :: xyzi(ndim),fmean(ndim)
  real                      :: realtrigterms, imtrigterms
- logical, parameter        :: Debug = .false.
- logical                   :: particle_is_active = .true.
+ logical, parameter        :: Debug = .true.
 
 !==============================================================================
 
  fmean(:) = 0.
- particle_is_active = .true.
 
  !! this is the critical loop wrt to computational resources
  !$omp parallel do default(none) schedule(static) &
- !$omp shared(xyzh,fxyzu,npart,st_nmodes,st_mode,st_ampl,iphase,correct_mean_force) &
+ !$omp shared(xyzh,fxyzu,npart,st_nmodes,st_mode,st_ampl) &
+#ifdef IND_TIMESTEPS
+ !$omp shared(iphase) &
+#endif
  !$omp shared(st_aka,st_akb,st_solweightnorm,st_amplfac) &
  !$omp private(i,xyzi,fxi,fyi,fzi,kxxi,kyyi,kzzi,kdotx,ampl) &
  !$omp private(realtrigterms,imtrigterms) &
- !$omp firstprivate(particle_is_active) &
+#ifdef CORRECT_MEAN_FORCE
  !$omp reduction(+:fmean) &
+#endif
  !$omp private(m)
  do i=1,npart
-    if (ind_timesteps) particle_is_active = iactive(iphase(i))
-    if (particle_is_active .or. correct_mean_force) then
+#ifndef CORRECT_MEAN_FORCE
+#ifdef IND_TIMESTEPS
+    if (iactive(iphase(i))) then
+#endif
+#endif
        xyzi(1:ndim) = xyzh(1:ndim,i)
        fxi=0.
        fyi=0.
@@ -787,47 +873,60 @@ subroutine st_calcAccel(npart,xyzh,fxyzu)
        fyi = 2.*st_amplfac*st_solweightnorm*fyi
        fzi = 2.*st_amplfac*st_solweightnorm*fzi
 
-       if (particle_is_active) then
+#ifdef CORRECT_MEAN_FORCE
+#ifdef IND_TIMESTEPS
+       if (iactive(iphase(i))) then
+#endif
+#endif
           fxyzu(1,i) = fxi
           fxyzu(2,i) = fyi
           fxyzu(3,i) = fzi
+#ifdef IND_TIMESTEPS
        endif
+#endif
+#ifdef CORRECT_MEAN_FORCE
+       fmean(1) = fmean(1) + fxi
+       fmean(2) = fmean(2) + fyi
+       fmean(3) = fmean(3) + fzi
+#endif
+    enddo
+    !$omp end parallel do
 
-       if (correct_mean_force) then
-          fmean(1) = fmean(1) + fxi
-          fmean(2) = fmean(2) + fyi
-          fmean(3) = fmean(3) + fzi
-       endif
-    endif
- enddo
- !$omp end parallel do
-
- if (correct_mean_force) then
-    !!  fmean = reduceall_mpi('+',fmean)
+#ifdef CORRECT_MEAN_FORCE
+!!  fmean = reduceall_mpi('+',fmean)
     fmean(:) = fmean(:)/real(npart)
 
+!!$omp master
     if (Debug) then
+!     print *, 'stir:  mass      = ', massoftype(1)*npart
+!     print *, 'stir:  xMomentum = ', xmom(1)
+!     print *, 'stir:  yMomentum = ', xmom(2)
+!     print *, 'stir:  zMomentum = ', xmom(3)
        print *, 'stir:  xforce_mean = ', fmean(1)
        print *, 'stir:  yforce_mean = ', fmean(2)
        print *, 'stir:  zforce_mean = ', fmean(3)
     endif
-    !
-    !--correction for bulk motion: note that, unlike in Christoph's code
-    !  we do not do the time integration here - rather we return the
-    !  force as part of the total force.
-    !
-    !$omp parallel do default(none) schedule(static) &
-    !$omp shared(fmean,fxyzu,npart,iphase) &
-    !$omp firstprivate(particle_is_active) &
-    !$omp private(i)
+!!$omp end master
+!
+!--correction for bulk motion: note that, unlike in Christoph's code
+!  we do not do the time integration here - rather we return the
+!  force as part of the total force.
+!
+    !$omp parallel do private(i) shared(fmean) schedule(static)
     do i=1,npart
-       if (ind_timesteps) particle_is_active = iactive(iphase(i))
-       if (particle_is_active) fxyzu(1:ndim,i) = fxyzu(1:ndim,i) - fmean(1:ndim)
+#ifdef IND_TIMESTEPS
+       if (iactive(iphase(i))) then
+#endif
+!     vxyzu(1:ndim,i) = vxyzu(1:ndim,i) - xmom(1:ndim)
+          fxyzu(1:ndim,i) = fxyzu(1:ndim,i) - fmean(1:ndim)
+#ifdef IND_TIMESTEPS
+       endif
+#endif
     enddo
     !$omp end parallel do
- endif
+#endif
 
-end subroutine st_calcAccel
+ end subroutine st_calcAccel
 
 !! NAME
 !!
@@ -856,45 +955,49 @@ end subroutine st_calcAccel
 !!
 !!***
 
-subroutine forceit(t,npart,xyzh,vxyzu,fxyzu)
- real,    intent(in)    :: t
- integer, intent(in)    :: npart
- real,    intent(in)    :: xyzh(:,:)
- real,    intent(inout) :: vxyzu(:,:)
- real,    intent(out)   :: fxyzu(:,:)
+ subroutine forceit(t,npart,xyzh,vxyzu,fxyzu)
+  real,    intent(in)    :: t
+  integer, intent(in)    :: npart
+  real,    intent(in)    :: xyzh(:,:)
+  real,    intent(inout) :: vxyzu(:,:)
+  real,    intent(out)   :: fxyzu(:,:)
 
- logical, parameter :: Debug = .false.
- logical            :: update_accel
+  logical   :: update_accel = .true.
+!  real :: tinfile
 
- ! Only update acceleration every st_freq timesteps
- update_accel = .false.
- !if ( (nstep == 1) .or. (mod (nstep, st_freq) == 0) ) then
- if (t > (tprev + st_dtfreq)) then
-    tprev = st_dtfreq*int(t/st_dtfreq)  ! round to last full dtfreq
-    update_accel = .true.
-    if (stir_from_file) then
-       call read_stirring_data_from_file(forcingfile,t,tinfile)
-       !if (id==master .and. iverbose >= 2) print*,' got new accel, tinfile = ',tinfile
-    endif
- endif
+  logical, parameter :: Debug = .false.
+!!===================================================================
 
- if (Debug) print *, 'stir:  stirring start'
+  ! Only update acceleration every st_freq timesteps
+  update_accel = .false.
+  !nstep = dBasePropertyInteger('CurrentStepNumber')
+  !if ( (nstep == 1) .or. (mod (nstep, st_freq) == 0) ) then
+  if (t > (tprev + st_dtfreq)) then
+     tprev = st_dtfreq*int(t/st_dtfreq)  ! round to last full dtfreq
+     update_accel = .true.
+     if (stir_from_file) then
+        call read_stirring_data_from_file(forcingfile,t,tinfile)
+        !if (id==master .and. iverbose >= 2) print*,' got new accel, tinfile = ',tinfile
+     endif
+  endif
 
- call st_calcAccel(npart,xyzh,fxyzu)
+  if (Debug) print *, 'stir:  stirring start'
 
- if (.not. stir_from_file) then
-    if (update_accel) then
-       if (Debug) print*,'updating accelerations...'
-       call st_ounoiseupdate(6*st_nmodes, st_OUphases, st_OUvar, st_dtfreq, st_decay)
-       call st_calcPhases()
-       !! Store random seed in memory for later checkpoint.
-       call random_seed (get = st_randseed)
-    endif
- endif
+  call st_calcAccel(npart,xyzh,fxyzu)
 
- if (Debug) print *, 'stir:  stirring end'
+  if (.not. stir_from_file) then
+     if (update_accel) then
+        if (Debug) print*,'updating accelerations...'
+        call st_ounoiseupdate(6*st_nmodes, st_OUphases, st_OUvar, st_dtfreq, st_decay)
+        call st_calcPhases()
+        !! Store random seed in memory for later checkpoint.
+        call random_seed (get = st_randseed)
+     endif
+  endif
 
-end subroutine forceit
+  if (Debug) print *, 'stir:  stirring end'
+
+ end subroutine forceit
 
 !! NAME
 !!
@@ -902,7 +1005,7 @@ end subroutine forceit
 !!
 !! SYNOPSIS
 !!
-!!  st_grn(real, intent (OUT)  :: grnval)
+!!  st_grn(real,intent (OUT)  :: grnval)
 !!
 !! DESCRIPTION
 !!
@@ -920,22 +1023,22 @@ end subroutine forceit
 !!   grnval : the number drawn from the distribution
 !!
 !!***
-subroutine st_grn (grnval)
+ subroutine st_grn (grnval)
 
- real, intent(out) :: grnval
- real              :: pi, r1, r2, g1
+  real, intent(out) :: grnval
+  real              :: pi, r1, r2, g1
 
- pi = 4. * atan (1.)
+  pi = 4. * atan (1.)
 
- r1 = 0.; r2 = 0;
+  r1 = 0.; r2 = 0;
 
- call random_number (r1)
- call random_number (r2)
- g1 = sqrt (2. * log (1. / r1) ) * cos (2. * pi * r2)
+  call random_number (r1)
+  call random_number (r2)
+  g1 = sqrt (2. * log (1. / r1) ) * cos (2. * pi * r2)
 
- grnval = g1
+  grnval = g1
 
-end subroutine st_grn
+ end subroutine st_grn
 
 !! NAME
 !!
@@ -957,55 +1060,58 @@ end subroutine st_grn
 !!
 !!***
 
-subroutine read_stirring_data_from_file(infile, time, timeinfile)
- use io,        only:id,master,fatal
- use datafiles, only:find_phantom_datafile
- character(len=*), intent(in)  :: infile
- real,             intent(in)  :: time
- real,             intent(out) :: timeinfile
- integer             :: nsteps,istep,istepfile,igetstep,ierr,iu
- real                :: end_time
- character(120)      :: my_file
- logical, parameter  :: Debug = .false.
+ subroutine read_stirring_data_from_file(infile, time, timeinfile)
+  use io,        only:id,master,fatal
+  use datafiles, only:find_phantom_datafile
 
- my_file = find_phantom_datafile(infile,'forcing')
+  character(len=*), intent(in)  :: infile
+  real,             intent(in)  :: time
+  real,             intent(out) :: timeinfile
 
- open(newunit=iu,file=my_file,iostat=ierr,status='old',action='read', &
+  logical, parameter  :: Debug = .false.
+
+  integer             :: nsteps, istep, istepfile, igetstep, ierr
+  real                :: end_time
+  character(120)      :: my_file
+
+  my_file = find_phantom_datafile(infile,'forcing')
+
+  open(unit=42,file=my_file,iostat=ierr,status='old',action='read', &
         access='sequential',form='unformatted')
- ! header contains number of times and number of modes, end time, autocorrelation time, ...
- if (ierr==0) then
-    if (Debug) write (*,'(A)') 'reading header...'
-    read (unit=iu) nsteps, st_nmodes, end_time, st_decay, st_energy, st_solweight, &
+  ! header contains number of times and number of modes, end time, autocorrelation time, ...
+  if (ierr==0) then
+     if (Debug) write (*,'(A)') 'reading header...'
+     read (unit=42) nsteps, st_nmodes, end_time, st_decay, st_energy, st_solweight, &
                     st_solweightnorm, st_stirmin, st_stirmax, st_spectform
-    if (Debug) write (*,'(A)') '...finished reading header'
- else
-    call fatal('read_stirring_data_from_file','could not open '//trim(my_file)//' for read ')
- endif
+     if (Debug) write (*,'(A)') '...finished reading header'
+  else
+     call fatal('read_stirring_data_from_file','could not open '//trim(my_file)//' for read ')
+  endif
 
- ! these are in the global contex
- st_dtfreq = end_time/nsteps
- igetstep = floor(time/st_dtfreq)
+  ! these are in the global contex
+  st_dtfreq = end_time/nsteps
+  igetstep = floor(time/st_dtfreq)
 
- do istep = 0, nsteps
-    if (Debug) write (*,'(a,i6)') 'step = ', istep
-    read (unit=iu) istepfile, timeinfile, &
+  do istep = 0, nsteps
+     if (Debug) write (*,'(a,i6)') 'step = ', istep
+     read (unit=42) istepfile, timeinfile, &
                      st_mode    (:, 1:  st_nmodes), &
                      st_aka     (:, 1:  st_nmodes), &
                      st_akb     (:, 1:  st_nmodes), &
                      st_ampl    (   1:  st_nmodes), &
                      st_OUphases(   1:6*st_nmodes)
 
-    if (istep /= istepfile) write(*,'(a,i6)') 'read_stirring_data_from_file: something wrong! step = ', istep
-    if (igetstep==istep) then
-       if (id==master) then
-          write(*,'(a,i6,2(a,e20.6))') 'read_stirring_data_from_file: read new forcing pattern, stepinfile = ',&
+     if (istep /= istepfile) write(*,'(a,i6)') 'read_stirring_data_from_file: something wrong! step = ', istep
+     if (igetstep==istep) then
+        if (id==master) then
+           write(*,'(a,i6,2(a,e20.6))') 'read_stirring_data_from_file: read new forcing pattern, stepinfile = ',&
                   istep,' , time = ', time, ' , time in stirring table = ', timeinfile
-       endif
-       close (unit=iu)
-       exit ! the loop
-    endif
- enddo
+        endif
+        close (unit=42)
+        exit ! the loop
+     endif
+  enddo
 
-end subroutine read_stirring_data_from_file
+ end subroutine read_stirring_data_from_file
 
 end module forcing

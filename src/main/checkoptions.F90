@@ -31,10 +31,13 @@ contains
 !-------------------------------------------------------------------
 subroutine check_compile_time_settings(ierr)
  use part,     only:mhd,gravity,ngradh,maxvxyzu,use_dust,gr
- use dim,      only:use_dustgrowth,maxtypes,mpi,inject_parts,h2chemistry,driving,disc_viscosity
- use io,       only:error,id,master,warning
+ use dim,      only:use_dustgrowth,maxtypes,mpi,inject_parts,h2chemistry
+ use io,       only:error,id,master,fatal,warning
  use mpiutils, only:barrier_mpi
+#ifdef GR
  use metric_tools, only:icoordinate,icoord_cartesian
+ use dim,          only:maxsts
+#endif
  integer, intent(out) :: ierr
  character(len=16), parameter :: string = 'compile settings'
 
@@ -80,53 +83,73 @@ subroutine check_compile_time_settings(ierr)
        ierr = 2
     endif
  endif
+!
+!--check that mutually-exclusive pre-processor statements and/or logicals are not set
+!
+#ifdef DISC_VISCOSITY
+#ifdef CONST_AV
+ if (id==master) call error(string,'should not use both -DCONST_AV and -DDISC_VISCOSITY')
+ ierr = 4
+#endif
+#endif
 
- if (use_dust .and. mhd .and. id==master) call error(string,'-DDUST currently not compatible with magnetic fields (-DMHD)')
+#ifdef DUST
+#ifdef MHD
+ if (id==master) call error(string,'-DDUST currently not compatible with magnetic fields (-DMHD)')
+#endif
+#endif
 
- if (gr .and. mhd) then
-    if (id==master) call error(string,'General relativity not compatible with MHD.')
+#ifdef GR
+ if (mhd) then
+    call error(string,'General relativity not compatible with MHD.')
     ierr = 6
  endif
- if (gr .and. use_dust) then
-    if (id==master) call error(string,'General relativity not compatible with dust.')
+ if (use_dust) then
+    call error(string,'General relativity not compatible with dust.')
     ierr = 7
  endif
- if (gr .and. gravity) then
-    if (id==master) call warning(string,'You are using SELF GRAVITY in GENERAL RELATIVITY. Proceed with caution...!')
+ if (gravity) then
+    call warning(string,'You are using SELF GRAVITY in GENERAL RELATIVITY. Proceed with caution...!')
  endif
- if (gr .and. h2chemistry) then
-    if (id==master) call error(string,'General relativity not compatible with chemistry.')
+ if (h2chemistry) then
+    call error(string,'General relativity not compatible with chemistry.')
     ierr = 8
  endif
- if (gr .and. driving) then
-    if (id==master) call error(string,'General relativity not compatible with turbulent driving.')
-    ierr = 11
+ if (maxsts > 1) then
+    call error(string,'General relativity not compatible with super-timestepping.')
+    ierr = 10
  endif
- if (gr .and. icoordinate /= icoord_cartesian) then
-    if (id==master) call error('checkoptions (GR)','Must use Cartesian-like coordinates in PHANTOM! Please change in metric_tools!')
+#ifdef DRIVING
+ call error(string,'General relativity not compatible with turbulent driving.')
+ ierr = 11
+#endif
+ if (icoordinate /= icoord_cartesian) then
+    call fatal('checkoptions (GR)',&
+   "You must use Cartesian-like coordinates in PHANTOM! Please change to Cartesian in metric_tools!'")
     ierr = 12
  endif
- if (gr .and. disc_viscosity) then
-    if (id==master) call warning(string,'General relativity not properly tested with disc viscosity.')
+ if (.not.gr) then
+    call error(string,'-DGR but gr=.false.')
+    ierr = 13
  endif
+#ifdef DISC_VISCOSITY
+ call error(string,'General relativity not compatible with disc viscosity.')
+ ierr = 14
+#endif
 #ifndef CONST_AV
- if (gr) then
-    if (id==master) call error(string,'General relativity should have CONST_AV=yes.')
-    ierr = 14
- endif
+ call error(string,'General relativity should have CONST_AV=yes.')
+ ierr = 15
+#endif
 #endif
 
 #ifdef DUSTGROWTH
  if (.not. use_dustgrowth) then
-    if (id==master) call error(string,'-DDUSTGROWTH but use_dustgrowth = .false.')
-    ierr = 15
+    call error(string,'-DDUSTGROWTH but use_dustgrowth = .false.')
+    ierr = 16
  endif
 #endif
 
- if (mpi .and. inject_parts) then
-    if (id==master) call error(string,'MPI currently not compatible with particle injection')
-    ierr = 16
- endif
+ if (mpi .and. inject_parts) call error(string,'MPI currently not compatible with particle injection')
 
  call barrier_mpi
 

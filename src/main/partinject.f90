@@ -44,7 +44,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  use part, only:maxp,iamtype,iphase,maxvxyzu,iboundary,nucleation,eos_vars,abundance
  use part, only:maxalpha,alphaind,maxgradh,gradh,fxyzu,fext,set_particle_type
  use part, only:mhd,Bevol,dBevol,Bxyz,divBsymm,gr,pxyzu,apr_level
- use part, only:divcurlv,divcurlB,ndivcurlB,ntot,ibin,imu,igamma
+ use part, only:divcurlv,divcurlB,ndivcurlv,ndivcurlB,ntot,ibin,imu,igamma
  use part, only:iorig,norig
  use io,   only:fatal
  use eos,  only:gamma,gmw
@@ -107,7 +107,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
 
  if (gr) pxyzu(:,particle_number) = 0.
 
- divcurlv(:,particle_number) = 0.
+ if (ndivcurlv > 0) divcurlv(:,particle_number) = 0.
  if (ndivcurlB > 0) divcurlB(:,particle_number) = 0.
  if (maxalpha==maxp) alphaind(:,particle_number) = 0.
  if (maxgradh==maxp) gradh(:,particle_number) = 0.
@@ -166,14 +166,16 @@ end subroutine add_or_update_sink
 !+
 !-----------------------------------------------------------------------
 subroutine update_injected_particles(npartold,npart,istepfrac,nbinmax,time,dtmax,dt,dtinject)
- use dim,          only:ind_timesteps,gr
+ use dim,          only:ind_timesteps
  use timestep_ind, only:get_newbin,change_nbinmax,get_dt
- use part,         only:twas,ibin,ibin_old,iphase,igas,iunknown,&
-                        xyzh,vxyzu,pxyzu,dens,metrics,metricderivs,fext
+ use part,         only:twas,ibin,ibin_old,iphase,igas,iunknown
+#ifdef GR
+ use part,         only:xyzh,vxyzu,pxyzu,dens,metrics,metricderivs,fext
  use cons2prim,    only:prim2consall
  use metric_tools, only:init_metric,imet_minkowski,imetric
  use extern_gr,    only:get_grforce_all
  use options,      only:iexternalforce
+#endif
  integer,         intent(in)    :: npartold,npart
  integer,         intent(inout) :: istepfrac
  integer(kind=1), intent(inout) :: nbinmax
@@ -181,22 +183,24 @@ subroutine update_injected_particles(npartold,npart,istepfrac,nbinmax,time,dtmax
  real,            intent(in)    :: time,dtmax,dtinject
  integer                        :: i
  integer(kind=1)                :: nbinmaxprev
+#ifdef GR
  real                           :: dtext_dum
+#endif
  !
  !--Exit if particles not added or updated
  !
  if (npartold==npart .and. .not.updated_particle) return
 
- if (gr) then
-    !
-    ! after injecting particles, reinitialise metrics on all particles
-    !
-    call init_metric(npart,xyzh,metrics,metricderivs)
-    call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,use_dens=.false.,dens=dens)
-    if (iexternalforce > 0 .and. imetric /= imet_minkowski) then
-       call get_grforce_all(npart,xyzh,metrics,metricderivs,vxyzu,fext,dtext_dum,dens=dens) ! Not 100% sure if this is needed here
-    endif
+#ifdef GR
+ !
+ ! after injecting particles, reinitialise metrics on all particles
+ !
+ call init_metric(npart,xyzh,metrics,metricderivs)
+ call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,use_dens=.false.,dens=dens)
+ if (iexternalforce > 0 .and. imetric /= imet_minkowski) then
+    call get_grforce_all(npart,xyzh,metrics,metricderivs,vxyzu,fext,dtext_dum,dens=dens) ! Not 100% sure if this is needed here
  endif
+#endif
 
  if (ind_timesteps) then
     ! find timestep bin associated with dtinject

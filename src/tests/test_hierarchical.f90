@@ -41,6 +41,7 @@ subroutine test_sethier(ntests,npass)
 
  if (id==master) write(*,"(/,a)") '<-- CHESS SETUP TESTS COMPLETE'
 
+
 end subroutine test_sethier
 
 subroutine test_heirarchical_string(ntests,npass)
@@ -65,6 +66,7 @@ end subroutine test_heirarchical_string
 
 !    call checkval(nwarn,0,0,nfailed(1),'setup warnings')
 !    call update_test_scores(ntests,nfailed(1:1),npass)
+
 
  ! DO TESTS HERE
 !end subroutine test_heirarchical_setup

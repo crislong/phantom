@@ -2381,6 +2381,7 @@ subroutine exact_dustywave(time,ampl,cs,Kdragin,lambda,x0,ymean_gas,ymean_dust,x
     rhogaso(i)  = rhogas
  enddo
 
+ return
 end subroutine exact_dustywave
 
 end module dustywaves

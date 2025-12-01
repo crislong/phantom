@@ -16,12 +16,10 @@ module ev2dotutils
 !
 ! :Owner: Daniel Price
 !
-! :Runtime parameters: None
-!
 ! :Dependencies: evutils, fileutils
 !
  use evutils
- use fileutils, only:files_are_sequential
+ use fileutils, only:files_are_sequential 
  implicit none
 
  private

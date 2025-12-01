@@ -14,7 +14,7 @@ module raytracer_all
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: dim, healpix, kernel, neighkdtree, part, units
+! :Dependencies: healpix, kernel, linklist, part, units
 !
  use healpix
  implicit none
@@ -362,7 +362,7 @@ end subroutine get_all_tau_outwards
  !+
  !--------------------------------------------------------------------------
 subroutine get_all_tau_outwards_single(npart, primary, xyzh, kappa, Rstar, order, raypolation, tau)
- use part, only:isdead_or_accreted
+ use part, only : isdead_or_accreted
  integer, intent(in) :: npart,order, raypolation
  real, intent(in)    :: primary(3), kappa(:), Rstar, xyzh(:,:)
  real, intent(out)   :: tau(:)
@@ -397,6 +397,7 @@ subroutine get_all_tau_outwards_single(npart, primary, xyzh, kappa, Rstar, order
  enddo
  !$omp enddo
  !$omp end parallel
+
 
  !_----------------------------------------------
  ! DETERMINE the optical depth for each particle
@@ -440,7 +441,7 @@ end subroutine get_all_tau_outwards_single
  !+
  !--------------------------------------------------------------------------
 subroutine get_all_tau_outwards_companion(npart, primary, xyzh, kappa, Rstar, companion, Rcomp, order, raypolation, tau)
- use part, only:isdead_or_accreted
+ use part, only : isdead_or_accreted
  integer, intent(in) :: npart, order, raypolation
  real, intent(in)    :: primary(3), companion(3), kappa(:), Rstar, xyzh(:,:), Rcomp
  real, intent(out)   :: tau(:)
@@ -805,6 +806,7 @@ subroutine interpolate_tau(nsides, vec, rays_tau, rays_dist, rays_dim, raypolati
  endif
 end subroutine interpolate_tau
 
+
  !--------------------------------------------------------------------------
  !+
  !  Interpolation of the optical depth for an arbitrary point on the ray,
@@ -867,9 +869,9 @@ end subroutine get_tau_on_ray
  !+
  !--------------------------------------------------------------------------
 subroutine ray_tracer(primary, ray, xyzh, kappa, Rstar, tau_along_ray, dist_along_ray, len, maxDistance)
- use neighkdtree, only:getneigh_pos,leaf_is_active,listneigh
- use kernel,      only:radkern
- use units,       only:umass,udist
+ use linklist, only:getneigh_pos,ifirstincell,listneigh
+ use kernel,   only:radkern
+ use units, only:umass,udist
  real, intent(in)     :: primary(3), ray(3), Rstar, xyzh(:,:), kappa(:)
  real, optional       :: maxDistance
  real, intent(out)    :: dist_along_ray(:), tau_along_ray(:)
@@ -886,7 +888,7 @@ subroutine ray_tracer(primary, ray, xyzh, kappa, Rstar, tau_along_ray, dist_alon
  inext=0
  do while (inext==0)
     h = h*2.
-    call getneigh_pos(primary+Rstar*ray,0.,h,listneigh,nneigh,xyzcache,maxcache,leaf_is_active)
+    call getneigh_pos(primary+Rstar*ray,0.,h,3,listneigh,nneigh,xyzh,xyzcache,maxcache,ifirstincell)
     call find_next(primary, ray, distance, xyzh, listneigh, inext, nneigh)
  enddo
  call calc_opacity(primary+Rstar*ray, xyzh, kappa, listneigh, nneigh, previousdtaudr)
@@ -898,7 +900,7 @@ subroutine ray_tracer(primary, ray, xyzh, kappa, Rstar, tau_along_ray, dist_alon
  do while (hasNext(inext,tau_along_ray(i),distance,maxDistance))
     i = i + 1
     call getneigh_pos(primary + distance*ray,0.,xyzh(4,inext)*radkern, &
-                              listneigh,nneigh,xyzcache,maxcache,leaf_is_active)
+                              3,listneigh,nneigh,xyzh,xyzcache,maxcache,ifirstincell)
     call calc_opacity(primary + distance*ray, xyzh, kappa, listneigh, nneigh, nextdtaudr)
     dtaudr            = (nextdtaudr+previousdtaudr)/2
     previousdtaudr    = nextdtaudr
@@ -1055,9 +1057,9 @@ end subroutine get_all_tau_inwards_companion
  !+
  !--------------------------------------------------------------------------
 subroutine get_tau_inwards(point, primary, xyzh, neighbors, kappa, Rstar, tau)
- use neighkdtree, only:getneigh_pos,leaf_is_active,listneigh
- use kernel,      only:radkern
- use units,       only:umass,udist
+ use linklist, only:getneigh_pos,ifirstincell,listneigh
+ use kernel,   only:radkern
+ use units, only:umass,udist
  real, intent(in)    :: primary(3), xyzh(:,:), kappa(:), Rstar
  integer, intent(in) :: point, neighbors(:,:)
  real, intent(out)   :: tau
@@ -1073,7 +1075,7 @@ subroutine get_tau_inwards(point, primary, xyzh, neighbors, kappa, Rstar, tau)
  maxDist=max(maxDist-Rstar,0.)
  next=point
  call getneigh_pos(xyzh(1:3,point),0.,xyzh(4,point)*radkern, &
-                           listneigh,nneigh,xyzcache,nmaxcache,leaf_is_active)
+                           3,listneigh,nneigh,xyzh,xyzcache,nmaxcache,ifirstincell)
  call calc_opacity(xyzh(1:3,point), xyzh, kappa, listneigh, nneigh, nextdtaudr)
  nextDist=0.
 
@@ -1088,7 +1090,7 @@ subroutine get_tau_inwards(point, primary, xyzh, neighbors, kappa, Rstar, tau)
        nextDist = maxDist
     endif
     call getneigh_pos(xyzh(1:3,point) + nextDist*ray,0.,xyzh(4,previous)*radkern, &
-                              listneigh,nneigh,xyzcache,nmaxcache,leaf_is_active)
+                              3,listneigh,nneigh,xyzh,xyzcache,nmaxcache,ifirstincell)
     previousdtaudr=nextdtaudr
     call calc_opacity(xyzh(1:3,point) + nextDist*ray, xyzh, kappa, listneigh, nneigh, nextdtaudr)
     dtaudr = (nextdtaudr+previousdtaudr)/2
@@ -1177,23 +1179,20 @@ end subroutine find_next
  !  OUT: dtaudr:         The local optical depth derivative at the given location (inpoint)
  !+
  !--------------------------------------------------------------------------
-subroutine calc_opacity(r0, xyzh, opacities, listneigh, nneigh, dtaudr)
+subroutine calc_opacity(r0, xyzh, opacities, neighbors, nneigh, dtaudr)
  use kernel,   only:cnormk,wkern
  use part,     only:hfact,rhoh,massoftype,igas
- use dim,      only:maxpsph
  real, intent(in)    :: r0(:), xyzh(:,:), opacities(:)
- integer, intent(in) :: listneigh(:), nneigh
+ integer, intent(in) :: neighbors(:), nneigh
  real, intent(out)   :: dtaudr
 
- integer :: i,j
+ integer :: i
  real    :: q
 
  dtaudr=0
  do i=1,nneigh
-    j = listneigh(i)
-    if (j > maxpsph) cycle
-    q = norm2(r0 - xyzh(1:3,j))/xyzh(4,j)
-    dtaudr=dtaudr+wkern(q*q,q)*opacities(j)*rhoh(xyzh(4,j), massoftype(igas))
+    q = norm2(r0 - xyzh(1:3,neighbors(i)))/xyzh(4,neighbors(i))
+    dtaudr=dtaudr+wkern(q*q,q)*opacities(neighbors(i))*rhoh(xyzh(4,neighbors(i)), massoftype(igas))
  enddo
  dtaudr = dtaudr*cnormk/hfact**3
 end subroutine calc_opacity

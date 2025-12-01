@@ -17,7 +17,6 @@ module moddump
 ! :Dependencies: centreofmass, part, prompting, ptmass_heating, units
 !
  implicit none
- character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 
@@ -101,6 +100,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  call prompt('Reset centre of mass?',reset_CM)
  if (reset_CM) call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 
+ return
 end subroutine modify_dump
 
 end module moddump

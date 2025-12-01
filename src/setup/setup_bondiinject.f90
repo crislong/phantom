@@ -6,7 +6,7 @@
 !--------------------------------------------------------------------------!
 module setup
 !
-! Bondi wind injection, as in Liptai & Price (2019)
+! None
 !
 ! :References: None
 !
@@ -17,12 +17,13 @@ module setup
 !   - pmassi     : *particle mass*
 !
 ! :Dependencies: bondiexact, eos, externalforces, infile_utils, inject, io,
-!   kernel, metric_tools, options, part, prompting, timestep, units
+!   metric_tools, options, part, prompting, timestep, units
 !
  implicit none
  public :: setpart
 
  private
+
 !
 !-- Defaults for setup-time parameters
 !
@@ -31,25 +32,18 @@ module setup
 
 contains
 
-!------------------------------------------------------------------------
-!+
-!  setup for Bondi wind injection
-!+
-!------------------------------------------------------------------------
 subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma_eos,hfact,time,fileprefix)
  use part,           only:igas,gr,xyzmh_ptmass,vxyz_ptmass
  use options,        only:iexternalforce
  use units,          only:set_units
  use inject,         only:init_inject,inject_particles,dtsphere,rin,drdp,iboundspheres
  use timestep,       only:tmax
- use io,             only:iprint,fatal,master
+ use io,             only:iprint,fatal
  use eos,            only:gamma
  use prompting,      only:prompt
  use metric_tools,   only:imet_schwarzschild,imetric
  use externalforces, only:accradius1,accradius1_hard
  use bondiexact,     only:isol
- use infile_utils,   only:get_options,infile_exists
- use kernel,         only:hfact_default
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -59,6 +53,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma_eos,hf
  real,              intent(out)   :: polyk,gamma_eos,hfact
  real,              intent(inout) :: time
  character(len=*),  intent(in)    :: fileprefix
+ logical :: iexist
  integer :: ierr,nspheres,npart_old
  real :: dtinject,tinfall,fac
 
@@ -70,13 +65,11 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma_eos,hf
  polyk           = 0.
  iexternalforce  = 1
 
- if (id==master) write(iprint,"(/,65('-'),1(/,a),/,65('-'),/)") ' Bondi injection in GR'
- call get_options(trim(fileprefix)//'.setup',id==master,ierr,&
-                  read_setupfile,write_setupfile,setup_interactive)
- if (ierr /= 0) stop 'rerun phantomsetup after editing .setup file'
+ call read_write_setupfile(id,fileprefix)
 
  !-- Don't overwrite these values if infile exists
- if (.not.infile_exists(fileprefix)) then
+ inquire(file=trim(fileprefix)//'.in',exist=iexist)
+ if (.not.iexist) then
     tmax            = 360.
     accradius1      = 2.1
     accradius1_hard = accradius1
@@ -95,7 +88,6 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma_eos,hf
  massoftype(igas) = pmassi
  gamma            = 5./3. !Set gamma in module eos since init_inject needs to know about it.
  gamma_eos        = gamma
- hfact            = hfact_default
 
  call init_inject(ierr)
 
@@ -115,11 +107,9 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma_eos,hf
 
 end subroutine setpart
 
-!-------------------------------------------------------------------------------
-!+
-!  Basic integration of the velocity to get the infall time between two points
-!+
-!-------------------------------------------------------------------------------
+!
+!-- Basic integration of the velocty to get the infall time between two points
+!
 subroutine get_tinfall(tinfall,r1,r2,gamma)
  use bondiexact, only:get_bondi_solution
  real, intent(in)  :: r1,r2,gamma
@@ -127,7 +117,6 @@ subroutine get_tinfall(tinfall,r1,r2,gamma)
  integer, parameter :: N=10000
  integer :: i
  real :: dr,rhor,vr,ur,r
-
  dr = abs(r2-r1)/N
  tinfall = 0.
 
@@ -140,24 +129,41 @@ subroutine get_tinfall(tinfall,r1,r2,gamma)
 
 end subroutine get_tinfall
 
-!------------------------------------------------------------------------
-!+
-!  interactive setup
-!+
-!------------------------------------------------------------------------
+!
+!---Read/write setup file--------------------------------------------------
+!
+
+subroutine read_write_setupfile(id,fileprefix)
+ use io, only:master,iprint
+ integer,          intent(in) :: id
+ character(len=*), intent(in) :: fileprefix
+ character(len=120) :: filename
+ logical :: iexist
+ integer :: ierr
+
+ if (id==master) write(iprint,"(/,65('-'),1(/,a),/,65('-'),/)") ' Bondi injection in GR'
+ filename = trim(fileprefix)//'.setup'
+ inquire(file=filename,exist=iexist)
+ if (iexist) call read_setupfile(filename,ierr)
+ if (.not. iexist .or. ierr /= 0) then
+    if (id==master) then
+       call setup_interactive()
+       call write_setupfile(filename)
+       write(iprint,*) 'Edit '//trim(filename)//' and rerun phantomsetup'
+    endif
+    stop
+ endif
+
+end subroutine read_write_setupfile
+
 subroutine setup_interactive()
  use prompting, only:prompt
 
  call prompt('Enter particle mass',pmassi,0.)
- call prompt('Prefill the domain with gas?',filldomain)
+ call prompt('Dou want to prefill the domain with gas?',filldomain)
 
 end subroutine setup_interactive
 
-!------------------------------------------------------------------------
-!+
-!  write setup file
-!+
-!------------------------------------------------------------------------
 subroutine write_setupfile(filename)
  use infile_utils, only:write_inopt
  use io,           only:iprint
@@ -173,11 +179,6 @@ subroutine write_setupfile(filename)
 
 end subroutine write_setupfile
 
-!------------------------------------------------------------------------
-!+
-!  read setup file
-!+
-!------------------------------------------------------------------------
 subroutine read_setupfile(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  use io,           only:error,iprint

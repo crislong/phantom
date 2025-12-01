@@ -19,16 +19,15 @@ program phantom
 !
 ! :Owner: Daniel Price
 !
-! :Usage: phantom infilename --maxp=50000000
+! :Usage: phantom infilename
 !
-! :Dependencies: dim, evolve, initial, io, mpiutils, systemutils
+! :Dependencies: dim, evolve, initial, io, mpiutils
 !
- use dim,             only:tagline,maxp_alloc
+ use dim,             only:tagline
  use mpiutils,        only:init_mpi,finalise_mpi
  use initial,         only:initialise,finalise,startrun,endrun
  use io,              only:id,master,nprocs,set_io_unit_numbers,die
  use evolve,          only:evol
- use systemutils,     only:get_command_option
  implicit none
  integer            :: nargs
  character(len=120) :: infile,logfile,evfile,dumpfile
@@ -44,17 +43,11 @@ program phantom
  if (nargs < 1) then
     if (id==master) then
        print "(a,/)",trim(tagline)
-       print "(a)",' Usage: phantom infilename --maxp=50000000'
+       print "(a)",' Usage: phantom infilename'
     endif
     call die
  endif
  call get_command_argument(1,infile)
- !
- ! command line option --maxp= to increase the memory allocation
- ! beyond the actual number of particles in the simulation (e.g. for
- ! particle injection)
- !
- maxp_alloc = get_command_option('maxp',default=int(maxp_alloc))
  !
  ! catch error if .setup is on command line instead of .in
  !

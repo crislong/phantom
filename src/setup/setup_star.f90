@@ -14,22 +14,25 @@ module setup
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: apr, apr_region, dim, eos, externalforces, infile_utils,
-!   io, kernel, mpidomain, options, part, setstar, setunits, setup_params,
+! :Dependencies: dim, eos, externalforces, infile_utils, io, kernel,
+!   mpidomain, options, part, physcon, setstar, setunits, setup_params,
 !   timestep
 !
  use io,             only:fatal,error,warning,master
  use part,           only:gravity,gr
- use options,        only:iexternalforce,calc_erot,use_var_comp
+ use physcon,        only:solarm,solarr,km,pi,c,radconst
+ use options,        only:nfulldump,iexternalforce,calc_erot,use_var_comp
  use timestep,       only:tmax,dtmax
- use eos,            only:ieos
- use externalforces, only:iext_densprofile
- use setstar,        only:star_t
+ use eos,                only:ieos
+ use externalforces,     only:iext_densprofile
+ use setstar,            only:star_t
+ use setunits,           only:dist_unit,mass_unit
  implicit none
  !
  ! Input parameters
  !
  real               :: maxvxyzu
+ logical            :: iexist
  logical            :: relax_star_in_setup,write_rho_to_file
  type(star_t)       :: star(1)
 
@@ -50,9 +53,6 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use mpidomain,       only:i_belong
  use setup_params,    only:rhozero,npart_total
  use setstar,         only:set_defaults_stars,set_stars,shift_stars,ibpwpoly,ievrard
- use apr,             only:use_apr
- use infile_utils,    only:get_options,infile_exists
- use setunits,        only:dist_unit,mass_unit
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -63,6 +63,8 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  character(len=20), intent(in)    :: fileprefix
  real,              intent(out)   :: vxyzu(:,:)
  integer                          :: ierr
+ logical                          :: setexists
+ character(len=120)               :: setupfile,inname
  real                             :: x0(3,1),v0(3,1)
  !
  ! Initialise parameters, including those that will not be included in *.setup
@@ -81,37 +83,39 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  !
  ! determine if the .in file exists
  !
- if (.not. infile_exists(fileprefix)) then
+ inname=trim(fileprefix)//'.in'
+ inquire(file=inname,exist=iexist)
+ if (.not. iexist) then
     tmax  = 100.
     dtmax = 1.0
     ieos  = 2
  endif
  !
- ! read/write from .setup file
+ ! determine if the .setup file exists
  !
- call get_options(trim(fileprefix)//'.setup',id==master,ierr,&
-                  read_setupfile,write_setupfile,setup_interactive)
- if (ierr /= 0) stop 'rerun phantomsetup after editing .setup file'
+ setupfile = trim(fileprefix)//'.setup'
+ inquire(file=setupfile,exist=setexists)
+ if (setexists) then
+    call read_setupfile(setupfile,ierr)
+    if (ierr /= 0) then
+       if (id==master) call write_setupfile(setupfile)
+       stop 'please rerun phantomsetup with revised .setup file'
+    endif
+    !--Prompt to get inputs and write to file
+ elseif (id==master) then
+    print "(a,/)",trim(setupfile)//' not found: using interactive setup'
+    call setup_interactive(ieos)
+    call write_setupfile(setupfile)
+    stop 'please check and edit .setup file and rerun phantomsetup'
+ endif
 
  !
  ! Verify correct pre-processor commands
  !
- if (.not.gravity) iexternalforce = iext_densprofile
- write_rho_to_file = .true.
-
- !
- ! if apr is being used, read in the parameters here or assume the defaults
- ! note that this needs to be done before the particles are set up
- !
- if (use_apr .and. relax_star_in_setup) then
-    if (infile_exists(fileprefix)) then
-       call read_aprsetupfile(trim(fileprefix)//'.in',ierr)
-    else
-       call warning('setup_star','apr options needed for relaxation not found; making you a .in file, update and try again')
-       relax_star_in_setup = .false.
-    endif
+ if (.not.gravity) then
+    iexternalforce = iext_densprofile
  endif
-
+ write_rho_to_file = .true.
  !
  ! set up particles
  !
@@ -138,9 +142,10 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  case(ibpwpoly) ! piecewise polytrope
     calc_erot = .true.
  case(ievrard)  ! Evrard Collapse
-    if (.not.infile_exists(fileprefix)) then
+    if (.not.iexist) then
        tmax      = 3.0
        dtmax     = 0.1
+       nfulldump = 1
     endif
  end select
 
@@ -151,9 +156,10 @@ end subroutine setpart
 !  Ask questions of the user to determine which setup to use
 !+
 !-----------------------------------------------------------------------
-subroutine setup_interactive()
- use setstar,  only:set_stars_interactive
- use setunits, only:set_units_interactive
+subroutine setup_interactive(ieos)
+ use setstar,       only:set_stars_interactive
+ use setunits,      only:set_units_interactive
+ integer, intent(inout) :: ieos
 
  ! units
  call set_units_interactive(gr)
@@ -219,42 +225,5 @@ subroutine read_setupfile(filename,ierr)
  call close_db(db)
 
 end subroutine read_setupfile
-
-!-----------------------------------------------------------------------
-!+
-!  Read apr parameters from input file
-!+
-!-----------------------------------------------------------------------
-subroutine read_aprsetupfile(filename,ierr)
- use infile_utils,  only:open_db_from_file,inopts,close_db,read_inopt
- use setstar,       only:read_options_stars
- use setunits,      only:read_options_and_set_units
- use apr_region,           only:apr_max_in,ref_dir,apr_type,apr_rad,apr_drad
- character(len=*), intent(in)  :: filename
- integer,          parameter   :: lu = 21
- integer,          intent(out) :: ierr
- integer                       :: nerr
- type(inopts), allocatable     :: db(:)
-
- call open_db_from_file(db,filename,lu,ierr)
- if (ierr /= 0) return
-
- nerr = 0
-
- ! apr options
- call read_inopt(apr_max_in,'apr_max',db,nerr)
- call read_inopt(ref_dir,'ref_dir',db,nerr)
- call read_inopt(apr_type,'apr_type',db,nerr)
- call read_inopt(apr_rad,'apr_rad',db,nerr)
- call read_inopt(apr_drad,'apr_drad',db,nerr)
-
- if (nerr > 0) then
-    print "(1x,a,i2,a)",'setup_star: ',nerr,' error(s) during read of apr options from .in file'
-    ierr = 1
- endif
-
- call close_db(db)
-
-end subroutine read_aprsetupfile
 
 end module setup

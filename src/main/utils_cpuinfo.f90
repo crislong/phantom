@@ -134,6 +134,7 @@ subroutine get_cpuinfo(ncpu,ncpureal,cpuspeed,cpumodel,cachesize,ierr)
     endif
  endif
 
+
 end subroutine get_cpuinfo
 
 !------------------------------

@@ -15,8 +15,7 @@ module analysis
 ! :Runtime parameters: None
 !
 ! :Dependencies: cooling, cooling_functions, cooling_solver, dim,
-!   dust_formation, infile_utils, initial, options, physcon, prompting,
-!   readwrite_infile, units
+!   dust_formation, options, physcon, prompting, units
 !
 
  use cooling
@@ -48,9 +47,10 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  real(kind=8),     intent(in) :: xyzh(:,:),vxyzu(:,:)
  real(kind=8),     intent(in) :: particlemass,time
 
+
  print "(29(a,/))", &
-      ' 1) get rate (for winds)', &
-      ' 2) generate table (for winds)', &
+      ' 1) get rate', &
+      ' 2) generate table', &
       ' 3) test integration'
 
  analysis_to_perform = 1
@@ -65,22 +65,18 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  case(2)
     call generate_grid()
  case(3)
-    call test_cooling_solvers(dumpfile)
+    call test_cooling_solvers
  end select
 
 end subroutine do_analysis
 
-subroutine test_cooling_solvers(dumpfile)
+
+subroutine test_cooling_solvers
 
  use prompting, only:prompt
  use physcon,   only:Rg
  use units,     only:unit_ergg,unit_density
  use options,   only:icooling
- ! For reading the input file:
- use units,            only:utime,umass,udist,set_units
- use infile_utils,     only:open_db_from_file,inopts,read_inopt,close_db
- use initial,          only:initialise
- use readwrite_infile, only:read_infile
 
  integer, parameter :: ndt = 100
  real :: tstart,tlast,dtstep,dti(ndt),tcool
@@ -90,10 +86,6 @@ subroutine test_cooling_solvers(dumpfile)
  real :: Q, dlnQ_dlnT
  real :: u,ui,dudt,T_on_u,Tout,dt,tcool0
  real :: T_floor
- ! For reading the input file:
- real :: utime_tmp,umass_tmp,udist_tmp
- character(len=*), intent(in)  ::   dumpfile
- character(len=120)            ::   infile,logfile,evfile,dfile
 
  integer :: i,imethod,ierr,iunit,ifunct,irate
  character(len=11) :: label
@@ -110,21 +102,6 @@ subroutine test_cooling_solvers(dumpfile)
  rho_gas = 1.d-20 !cgs
  rho     = rho_gas/unit_density
 
- !
- !--store units, otherwise initialise() put them to 1
- !
- utime_tmp = utime
- umass_tmp = umass
- udist_tmp = udist
-
- !
- ! Read input file
- !
- infile = dumpfile(1:index(dumpfile,'_')-1)//'.in'
- call initialise()
- call set_units(udist_tmp,umass_tmp,utime_tmp)
- call read_infile(infile,logfile,evfile,dfile)
-
  call init_cooling_solver(ierr)
  call set_abundances
  call init_muGamma(rho_gas, T_gas, mu, gamma, pH, pH2)
@@ -135,15 +112,13 @@ subroutine test_cooling_solvers(dumpfile)
       ' 2) Q = -b*T', &
       ' 3) Q = -c*T**3', &
       ' 4) Q = -d/T**3', &
-      ' 5) HI cooling', &
-      ' 6) piecewise law'
+      ' 5) HI cooling'
 
  irate = 0
  call prompt('Choose cooling rate ',irate)
  print *,''
 
  excitation_HI  = 99
- shock_problem = 0
  ifunct = 0
  select case(irate)
  case(2)
@@ -158,10 +133,6 @@ subroutine test_cooling_solvers(dumpfile)
  case(5)
     excitation_HI = 1
     label = '_HI.dat'
- case(6)
-    shock_problem = 1
-    excitation_HI = 98
-    label = '_piece.dat'
  case default
     ifunct = 0  !cst coolint rate
     label = '_linear.dat'
@@ -184,6 +155,7 @@ subroutine test_cooling_solvers(dumpfile)
  T_on_u = (gamma-1.)*mu*unit_ergg/Rg
  ui     = T_gas/T_on_u
 
+
 !set timesteps
  tlast = 10.
  dtstep = log10(tlast/tstart)/(ndt-1)
@@ -203,7 +175,7 @@ subroutine test_cooling_solvers(dumpfile)
     print *,'#Tin=',T_gas,', rho_cgs=',rho_gas,', imethod=',icool_method,', cooling funct =',ifunct,excitation_HI,k2
     do i = 1,ndt
        dt = tcool0*dti(i)
-       call energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,0.,K2,kappa)
+       call energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,0.,K2,0.)
        u = ui+dt*dudt
        Tout = max(u*T_on_u,T_floor)
        write(iunit,*) dti(i),dt,Tout,dudt,get_Texact(ifunct,T_gas,dt,tcool0,T_floor)
@@ -217,27 +189,27 @@ subroutine test_cooling_solvers(dumpfile)
 
  !perform explicit integration
  icool_method = 1
- call integrate_cooling('test_cooling_explicit'//trim(label),ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma,kappa)
+ call integrate_cooling('test_cooling_explicit'//trim(label),ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma)
 
  !perform implicit integration
- icool_method = 0
- call integrate_cooling('test_cooling_implicit'//trim(label),ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma,kappa)
+ icool_method = 1
+ call integrate_cooling('test_cooling_implicit'//trim(label),ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma)
 
- !perform exact integration
+ !perform implicit integration
  icool_method = 2
- call integrate_cooling('test_cooling_exact'//trim(label),ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma,kappa)
+ call integrate_cooling('test_cooling_exact'//trim(label),ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma)
 
 end subroutine test_cooling_solvers
 
 !-----------------------------------------------------------
 ! time integration of du/dt between t=0 and t=10*tcool
 !-----------------------------------------------------------
-subroutine integrate_cooling(file_in,ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma,kappa)
+subroutine integrate_cooling(file_in,ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,mu,gamma)
  use units,   only:unit_ergg
- use physcon, only:Rg
+ use physcon, only: Rg
 
  integer, intent(in) :: ifunct
- real, intent(in) :: tcool0,ui,rho,mu,gamma,T_gas,T_floor,tstart,kappa
+ real, intent(in) :: tcool0,ui,rho,mu,gamma,T_gas,T_floor,tstart
  character(len=*), intent(in) :: file_in
  real :: time,dudt,dt,Tout,u,tend,dt_fact,T_on_u
  integer :: iunit
@@ -254,7 +226,7 @@ subroutine integrate_cooling(file_in,ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,m
  open(newunit=iunit,file=file_in,status='replace')
  write(iunit,*) tstart,dT,Tout,dudt,get_Texact(99,T_gas,time,tcool0,T_floor)
  do while (time < tend)! .and. Tout > T_floor)
-    call energ_cooling_solver(u,dudt,rho,dt,mu,gamma,0.,dble(ifunct),kappa)
+    call energ_cooling_solver(u,dudt,rho,dt,mu,gamma,0.,dble(ifunct),0.)
     u = u+dt*dudt
     Tout = max(u*T_on_u,T_floor)
     time = time+dt

@@ -14,7 +14,7 @@ module analysis
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: kdtree, neighkdtree, part
+! :Dependencies: kdtree, linklist, part
 !
  implicit none
  character(len=20), parameter, public :: analysistype = 'write_kdtree'
@@ -27,8 +27,8 @@ contains
 
 subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
- use part,        only: iphase
- use neighkdtree, only:build_tree
+ use part, only: iphase
+ use linklist, only: set_linklist
 
  implicit none
 
@@ -37,18 +37,19 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  real,             intent(in) :: xyzh(:,:),vxyzu(:,:)
  real,             intent(in) :: particlemass,time
 
- real, allocatable,dimension(:,:) :: dumxyzh
+ real,allocatable,dimension(:,:) :: dumxyzh
+
 
  !****************************************
- ! 1. Build kdtree
+ ! 1. Build kdtree and linklist
  ! --> global (shared) neighbour lists for all particles in tree cell
  !****************************************
 
- print*, 'Building kdtree: '
+ print*, 'Building kdtree and linklist: '
 
  allocate(dumxyzh(4,npart))
  dumxyzh = xyzh
- call build_tree(npart,npart,dumxyzh,vxyzu)
+ call set_linklist(npart,npart,dumxyzh,vxyzu)
 
  print*, '- Done'
 
@@ -59,6 +60,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
 end subroutine do_analysis
 
+
 !--------------------------------------------------------------------
 !+
 ! Writes 3D kd-tree to binary file
@@ -66,12 +68,12 @@ end subroutine do_analysis
 !--------------------------------------------------------------------
 subroutine write_kdtree_file(dumpfile)
 
- use neighkdtree, only:ncells
- use kdtree,      only: node
+ use linklist, only: ncells
+ use kdtree, only: node
 
  implicit none
 
- character(len=*), intent(in) :: dumpfile
+ character(len=*), intent(in):: dumpfile
  character(7) :: filetag
  character(100) :: treefile
  integer :: icell
@@ -121,11 +123,11 @@ end subroutine write_kdtree_file
 !--------------------------------------------------------------------
 subroutine read_kdtree_file(dumpfile)
 
- use neighkdtree, only:ncells
- use kdtree,      only: node
+ use linklist, only: ncells
+ use kdtree, only: node
 
  implicit none
- character(len=*), intent(in) :: dumpfile
+ character(len=*), intent(in):: dumpfile
  character(7) :: filetag
  character(100) :: treefile
 

@@ -28,6 +28,7 @@ module cons2primsolver
 
  private :: get_u
 
+
 !!!!!!====================================================
 !
 !
@@ -238,6 +239,7 @@ subroutine conservative2primitive(x,metrici,v,dens,u,P,temp,gamma,rho,pmom,en,ie
  enddo
 
  if (.not.converged) ierr = 1
+
 
  lorentz_LEO = sqrt(1.+pmom2/enth**2)
  dens = term/lorentz_LEO

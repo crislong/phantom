@@ -17,7 +17,6 @@ module moddump
 ! :Dependencies: None
 !
  implicit none
- character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 
@@ -29,6 +28,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  print*,' no modifications performed '
 
+ return
 end subroutine modify_dump
 
 end module moddump

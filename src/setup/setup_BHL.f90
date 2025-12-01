@@ -6,9 +6,7 @@
 !--------------------------------------------------------------------------!
 module setup
 !
-! Bondi-Hoyle Lyttleton setup. This is just a blank domain
-! containing a single sink particle into which particles
-! will be injected
+! this module does setup
 !
 ! :References: None
 !
@@ -16,7 +14,7 @@ module setup
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: inject, kernel, part, physcon, units
+! :Dependencies: inject, part, physcon, units
 !
  implicit none
  public :: setpart
@@ -35,7 +33,6 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use physcon,    only:pi,au,solarm
  use units,      only:udist,umass,utime,set_units
  use inject,     only:init_inject,BHL_r_star,BHL_m_star,BHL_pmass
- use kernel,     only:hfact_default
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -49,16 +46,18 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  integer         :: ierr
 
  call set_units(dist=1.,time=1.,G=1.)
+
 !
 !--general parameters
 !
  time  = 0.
  polyk = 0.
  gamma = 5./3.
- hfact = hfact_default
+
  call init_inject(ierr)
  m     = BHL_m_star / umass ! Depends on parameters in the input file
  hacc  = BHL_r_star / udist ! Depends on parameters in the input file
+
 !
 !--space available for injected gas particles
 !

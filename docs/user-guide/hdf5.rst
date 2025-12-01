@@ -1,5 +1,5 @@
-Converting Phantom output files to HDF5 format
-===============================================
+Reading and writing Phantom output files in HDF5 format
+=======================================================
 
 From
 `Wikipedia <https://en.wikipedia.org/wiki/Hierarchical_Data_Format>`__:
@@ -53,8 +53,8 @@ The location of the library is then
 Compiling
 ~~~~~~~~~
 
-We use the Fortran bindings in phantom2hdf5. This means that you must use the
-same compiler to compile phantom2hdf5 as was used for the HDF5 library on
+We use the Fortran bindings in Phantom. This means that you must use the
+same compiler to compile Phantom as was used for the HDF5 library on
 your machine. Typically this is GCC (gfortran) *not* Intel Fortran
 (ifort). If you want to compile Phantom with ifort you must compile HDF5
 yourself.
@@ -88,15 +88,12 @@ following code. It may take a while.
    sudo chown <user> /usr/local/hdf5
    make install
 
-Converting standard output files to HDF5 format with phantom2hdf5
------------------------------------------------------------------
+Compiling Phantom
+-----------------
 
-``phantom2hdf5`` is a utility that can convert standard Phantom dump
-files to HDF5 format.
-
-Writing HDF5 output requires access to the Fortran HDF5 library. 
-To compile for HDF5 output set ``HDF5_DIR``, for example if HDF5 
-was installed with Homebrew on macOS::
+Writing HDF5 output is a compile time option and requires access to the
+Fortran HDF5 library. To compile for HDF5 output set ``HDF5_DIR``, for
+example if HDF5 was installed with Homebrew on macOS::
 
    HDF5_DIR=/usr/local/opt/hdf5
 
@@ -106,7 +103,7 @@ or if it was installed with APT on Ubuntu::
 
 Then compile with::
 
-   make phantom2hdf5HDF5=yes
+   make HDF5=yes
 
 The variable ``HDF5_DIR`` specifies the location of the HDF5 library.
 
@@ -130,16 +127,35 @@ once the HDF5 module is loaded::
    module load openmpi/3.0.0
    module load hdf5/1.10.1
 
-Then when you compile Phantom2hdf5 ensure ``HDF5_DIR`` is set correctly::
+Then when you compile Phantom ensure ``HDF5_DIR`` is set correctly::
 
-   make SYSTEM=ozstar HDF5=yes phantom2hdf5
+   make SYSTEM=ozstar HDF5=yes phantom setup
 
-Note that you must have the HDF5 module loaded when running phantom2hdf5. 
-So make sure to put ``module load hdf5/1.10.1`` in your Slurm job file if
-performing the conversion as part of your job script.
+Note that you must have the HDF5 module loaded when running phantom,
+phantomsetup, etc. So make sure to put ``module load hdf5/1.10.1`` in
+your Slurm job file.
 
-Using phantom2hdf5
-~~~~~~~~~~~~~~~~~~
+Converting standard output files to HDF5 format with phantom2hdf5
+-----------------------------------------------------------------
+
+``phantom2hdf5`` is a utility that can convert standard Phantom dump
+files to HDF5 format.
+
+You need to compile it with the same options as you compiled Phantom to produce
+the original Phantom dump. For example, if you have a dusty disc dump to convert
+that you originally compiled with
+
+::
+
+   make SETUP=dustydisc MAXP=10000000
+
+then you would compile ``phantom2hdf5`` as follows
+
+::
+
+   make SETUP=dustydisc MAXP=10000000 HDF5=yes phantom2hdf5
+
+Recall that you will need to set ``HDF5_DIR`` appropriately for your system.
 
 Now pass a file (or a list of files) to the converter
 

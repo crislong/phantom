@@ -145,6 +145,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  allocate(ipotensort(npart)) ! Array for sorting particles by potential
  allocate(dpoten(npart)) ! Holding array for potential (real*8)
 
+
  dpoten = dble(poten)
 
 ! Add potential contribution from all sinks first
@@ -461,7 +462,7 @@ end subroutine read_analysis_options
 !+
 !-----------------------------------------------------------------------
 subroutine amend_options_file(dumpfile)
- character(len=*), intent(in) :: dumpfile
+ character(len=*),intent(in) :: dumpfile
 
  ! Open the options file, and wind forward to the line of interest
  open(10,file='clumpfind.options',form='formatted')
@@ -594,7 +595,7 @@ end subroutine create_sink_clumps
 !+
 !-----------------------------------------------------------------------
 subroutine initialise_clump(ipart)
- use part, only:xyzh, vxyzu, massoftype,igas
+ use part, only: xyzh, vxyzu, massoftype,igas
  integer, intent(in) :: ipart
  character(len=100)  :: fmt
  integer             :: k
@@ -711,7 +712,7 @@ end subroutine remove_particle_from_clump
 !-----------------------------------------------------------------------
 subroutine test_clump_boundness(deletedclumps,npart,xyzh,pmass)
  use part,      only: xyzmh_ptmass,ihacc
- use sortutils, only:indexx
+ use sortutils, only: indexx
 #ifdef PERIODIC
  use boundary,  only:dxbound,dybound,dzbound
 #endif
@@ -837,7 +838,7 @@ end subroutine test_clump_boundness
 !+
 !-----------------------------------------------------------------------
 subroutine calc_clump_boundness(iclump)
- integer, intent(in) :: iclump
+ integer,intent(in) :: iclump
 
  if ( clump(iclump)%potential > 0. ) then
     clump(iclump)%bound  = (clump(iclump)%thermal + clump(iclump)%kinetic) / clump(iclump)%potential
@@ -1065,7 +1066,7 @@ end subroutine read_oldclump_data
 !-----------------------------------------------------------------------
 subroutine merger_tree(npart,dumpfile)
  integer,         intent(in) :: npart
- character(len=*), intent(in) :: dumpfile
+ character(len=*),intent(in) :: dumpfile
  integer                     :: IDmax,noldclump,ipart,iclump,jclump
  real                        :: memberfraction,oldtime
 

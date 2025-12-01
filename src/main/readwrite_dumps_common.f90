@@ -15,8 +15,8 @@ module readwrite_dumps_common
 ! :Runtime parameters: None
 !
 ! :Dependencies: boundary, boundary_dyn, checkconserved, dim, dump_utils,
-!   dust, dust_formation, dynamic_dtmax, eos, externalforces, fileutils,
-!   gitinfo, io, options, part, setup_params, sphNGutils, timestep, units
+!   dust, dust_formation, eos, externalforces, fileutils, gitinfo, io,
+!   options, part, setup_params, sphNGutils, timestep, units
 !
  use dump_utils, only:lenid
  implicit none
@@ -30,7 +30,7 @@ contains
 !+
 !--------------------------------------------------------------------
 character(len=lenid) function fileident(firstchar,codestring)
- use part,    only:mhd,npartoftype,idust,gravity
+ use part,    only:mhd,npartoftype,idust,gravity,lightcurve
  use options, only:use_dustfrac
  use dim,     only:use_dustgrowth,phantom_version_string,use_krome,store_dust_temperature,do_nucleation,h2chemistry
  use gitinfo, only:gitsha
@@ -50,6 +50,7 @@ character(len=lenid) function fileident(firstchar,codestring)
  if (npartoftype(idust) > 0) string = trim(string)//'+dust'
  if (use_dustfrac) string = trim(string)//'+1dust'
  if (h2chemistry) string = trim(string)//'+H2chem'
+ if (lightcurve) string = trim(string)//'+lightcurve'
  if (use_dustgrowth) string = trim(string)//'+dustgrowth'
  if (use_krome) string = trim(string)//'+krome'
  if (store_dust_temperature) string = trim(string)//'+Tdust'
@@ -265,8 +266,7 @@ subroutine fill_header(sphNGdump,t,nparttot,npartoftypetot,nblocks,nptmass,hdr,i
                           idust,grainsize,graindens,ndusttypes
  use checkconserved, only:get_conserv,etot_in,angtot_in,totmom_in,mdust_in,mtot_in
  use setup_params,   only:rhozero
- use timestep,       only:C_cour,C_force
- use dynamic_dtmax,  only:dtmax_user,idtmax_n_next,idtmax_frac_next
+ use timestep,       only:dtmax_user,idtmax_n_next,idtmax_frac_next,C_cour,C_force
  use externalforces, only:write_headeropts_extern
  use boundary,       only:xmin,xmax,ymin,ymax,zmin,zmax
  use boundary_dyn,   only:dynamic_bdy,dxyz,rho_bkg_ini,irho_bkg_ini
@@ -410,7 +410,7 @@ subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
  use dump_utils,     only:extract,dump_h
  use dust,           only:grainsizecgs,graindenscgs
  use units,          only:unit_density,udist
- use dynamic_dtmax,  only:idtmax_n,idtmax_frac
+ use timestep,       only:idtmax_n,idtmax_frac
  use dust_formation, only:read_headeropts_dust_formation
  type(dump_h), intent(in)  :: hdr
  logical,      intent(in)  :: phantomdump
@@ -544,6 +544,7 @@ subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
     get_conserv = 1.0
  endif
 
+
  !--pull grain size and density arrays if they are in the header
  !-- i.e. if dustgrowth is not ON
  if (use_dust .and. .not.use_dustgrowth) then
@@ -567,12 +568,12 @@ end subroutine unfill_rheader
 subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkproperties,massoftype,&
                         alphafile,tfile,phantomdump,got_iphase,got_xyzh,got_vxyzu,got_alpha, &
                         got_krome_mols,got_krome_gamma,got_krome_mu,got_krome_T, &
-                        got_abund,got_dustfrac,got_sink_data,got_sink_vels,got_sink_sfprop,got_Bxyz,got_psi, &
+                        got_abund,got_dustfrac,got_sink_data,got_sink_vels,got_sink_llist,got_Bxyz,got_psi, &
                         got_dustprop,got_pxyzu,got_VrelVf,got_dustgasprop,got_rad,got_radprop,got_Tdust, &
                         got_eosvars,got_nucleation,got_iorig,got_apr_level,&
                         iphase,xyzh,vxyzu,pxyzu,alphaind,xyzmh_ptmass,Bevol,iorig,iprint,ierr)
  use dim,  only:maxp,maxvxyzu,maxalpha,maxBevol,mhd,h2chemistry,use_dustgrowth,gr,&
-                do_radiation,store_dust_temperature,do_nucleation,use_krome,use_apr
+                do_radiation,store_dust_temperature,do_nucleation,use_krome,use_apr,store_ll_ptmass
  use eos,  only:ieos,polyk,gamma,eos_is_non_ideal
  use part, only:maxphase,isetphase,set_particle_type,igas,ihacc,ihsoft,imacc,ilum,ikappa,&
                 xyzmh_ptmass_label,vxyz_ptmass_label,get_pmass,rhoh,dustfrac,ndusttypes,norig,&
@@ -585,7 +586,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
  real,            intent(in)    :: massoftype(:),alphafile,tfile
  logical,         intent(in)    :: phantomdump,got_iphase,got_xyzh(:),got_vxyzu(:),got_alpha(:),got_dustprop(:)
  logical,         intent(in)    :: got_VrelVf,got_dustgasprop(:)
- logical,         intent(in)    :: got_abund(:),got_dustfrac(:),got_sink_data(:),got_sink_vels(:),got_sink_sfprop(:),got_Bxyz(:)
+ logical,         intent(in)    :: got_abund(:),got_dustfrac(:),got_sink_data(:),got_sink_vels(:),got_sink_llist,got_Bxyz(:)
  logical,         intent(in)    :: got_krome_mols(:),got_krome_gamma,got_krome_mu,got_krome_T
  logical,         intent(in)    :: got_psi,got_Tdust,got_eosvars(:),got_nucleation(:),got_pxyzu(:),got_rad(:)
  logical,         intent(in)    :: got_radprop(:),got_iorig,got_apr_level
@@ -767,6 +768,9 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
     enddo
     if (.not.all(got_sink_vels(1:3))) then
        if (id==master .and. i1==1) write(*,"(/,a,/)") 'WARNING! sink particle velocities not found'
+    endif
+    if ( store_ll_ptmass .and. .not.got_sink_llist) then
+       if (id==master .and. i1==1) write(*,"(/,a,/)") 'WARNING! sink particle link list not found'
     endif
     if (id==master .and. i1==1) then
        print "(2(a,i4),a)",' got ',nsinkproperties,' sink properties from ',nptmass,' sink particles'

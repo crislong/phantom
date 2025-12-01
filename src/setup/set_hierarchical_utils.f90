@@ -268,7 +268,7 @@ end subroutine load_hierarchy_file
 !--------------------------------------------------------------------------
 subroutine update_hierarchy_file(prefix, hs, data, lines, hier_prefix, i1, i2, ierr)
  integer, intent(in) :: i1, i2
- character(len=20), intent(in), optional :: prefix
+ character(len=20), intent(in), optional:: prefix
  character(len=20), intent(in) :: hier_prefix
  type(hierarchical_system), intent(in) :: hs
  real, dimension(hier_db_size,hier_db_prop), intent(inout) :: data
@@ -403,13 +403,13 @@ subroutine find_hier_level_orb_elem(hl_temp, hs, m1, m2, accr1, accr2, &
  !print *,'labels passing: ', trim(adjustl(hl_temp))//'1 ', m1,trim(adjustl(hl_temp))//'2 ',m2
 
  if (any(hs%labels%sink == trim(adjustl(hl_temp))//'1')) then
-    accr1 = hs%sinks( maxloc( merge(0,1,hs%labels%sink==trim(adjustl(hl_temp))//'1' ), 1) )%accr
+    accr1 = hs%sinks(findloc(hs%labels%sink,trim(adjustl(hl_temp))//'1', 1))%accr
  else
     accr1 = 1.
  endif
 
  if (any(hs%labels%sink == trim(adjustl(hl_temp))//'2')) then
-    accr2 = hs%sinks( maxloc( merge(0,1,hs%labels%sink==trim(adjustl(hl_temp))//'2' ), 1) )%accr
+    accr2 = hs%sinks(findloc(hs%labels%sink,trim(adjustl(hl_temp))//'2', 1))%accr
  else
     accr2 = 1.
  endif
@@ -432,7 +432,7 @@ end subroutine find_hier_level_orb_elem
 !--------------------------------------------------------------------------
 subroutine find_ptmass_index(hier_label, index, prefix, ierr)
  integer,    intent(out)    :: index, ierr
- character(len=20), intent(in), optional :: prefix, hier_label
+ character(len=20), intent(in), optional:: prefix, hier_label
 
  real, dimension(hier_db_size,hier_db_prop) :: data
  integer :: lines, hier_int, io
@@ -484,7 +484,7 @@ end subroutine find_hierarchy_index
 !--------------------------------------------------------------------------
 subroutine find_data_index(hier_label, index, prefix, ierr)
  integer,    intent(out)    :: index, ierr
- character(len=20), intent(in), optional :: prefix, hier_label
+ character(len=20), intent(in), optional:: prefix, hier_label
 
  real, dimension(hier_db_size,hier_db_prop) :: data
  integer :: lines, hier_int, io

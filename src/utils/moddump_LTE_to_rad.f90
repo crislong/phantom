@@ -18,7 +18,6 @@ module moddump
 !   mesa_microphysics, part, radiation_utils, units
 !
  implicit none
- character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 

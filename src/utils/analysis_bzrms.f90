@@ -29,6 +29,7 @@ module analysis
  logical, private   :: ambitest,halltest
  logical, private   :: firstcall = .true.
 
+
  private
 
 contains
@@ -36,7 +37,7 @@ contains
 subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  use io,      only: id,master,fatal
  use part,    only: Bxyz,rhoh,mhd
- use physcon, only:pi,fourpi,qe,c,mass_proton_cgs
+ use physcon, only: pi,fourpi,qe,c,mass_proton_cgs
  character(len=*), intent(in) :: dumpfile
  integer,          intent(in) :: num,npart,iunit
  real,             intent(in) :: xyzh(:,:),vxyzu(:,:)
@@ -190,7 +191,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  !--Write results to file
  write(iunit,'(19(es18.10,1x))') &
     time, Bzrms, Bave(3), Bzrmsnoa, hoft,pdiffW ,vmax(1:3), &
-    sqrt(Bzrmsc/real(num)),vrms, Bzrmsav/sqrt(real(num)), &
+    sqrt(Bzrmsc/float(num)),vrms, Bzrmsav/sqrt(float(num)), &
     vaave,Bave(1),ratioANA,ratioACT,pdiffR
  close(iunit)
  !

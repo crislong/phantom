@@ -51,6 +51,7 @@ subroutine set_vfield(itype,angvel,npart,npartoftype,xyzh,massoftype,vxyzu)
     vxyzu(1:3,1:npart) = 0.
  end select
 
+ return
 end subroutine set_vfield
 
 !-------------------------------------------------------------------

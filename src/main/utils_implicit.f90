@@ -53,4 +53,5 @@ subroutine allocate_memory_implicit(npart,radkern,hfact,ierr)
 
 end subroutine allocate_memory_implicit
 
+
 end module implicit

@@ -14,7 +14,7 @@ module testindtstep
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: dim, io, testutils, timestep_ind
+! :Dependencies: io, testutils, timestep_ind
 !
  implicit none
  public :: test_indtstep
@@ -28,11 +28,14 @@ contains
 !+
 !-----------------------------------------------------------------------
 subroutine test_indtstep(ntests,npass)
- use dim,             only:ind_timesteps
- use io,              only:id,master,iverbose
+ use io,              only:id,master
+#ifdef IND_TIMESTEPS
  use testutils,       only:checkvalbuf,checkvalbuf_end,checkval,update_test_scores
  use timestep_ind,    only:change_nbinmax,get_newbin,maxbins,istepfrac,nbinmax
+ use io,              only:iverbose
+#endif
  integer, intent(inout) :: ntests,npass
+#ifdef IND_TIMESTEPS
  integer :: istep
  integer(kind=1) :: i,nbinmaxprev,ibini
  real :: dtmax,dt,fracin,fracout,errmax1,errmax2
@@ -40,12 +43,7 @@ subroutine test_indtstep(ntests,npass)
  integer :: nfailed(32)
  character(len=10) :: string
 
- if (ind_timesteps) then
-    if (id==master) write(*,"(/,a,/)") '--> TESTING IND TIMESTEP UTILS'
- else
-    if (id==master) write(*,"(/,a)") '--> SKIPPING TEST OF IND TIMESTEP UTILS (need -DIND_TIMESTEPS)'
-    return
- endif
+ if (id==master) write(*,"(/,a,/)") '--> TESTING IND TIMESTEP UTILS'
 
  dtmax   = 1.
  !
@@ -131,6 +129,11 @@ subroutine test_indtstep(ntests,npass)
  nbinmax = 0
 
  if (id==master) write(*,"(/,a)") '<-- IND TIMESTEP UTILS TEST COMPLETE'
+
+#else
+ if (id==master) write(*,"(/,a)") '--> SKIPPING TEST OF IND TIMESTEP UTILS (need -DIND_TIMESTEPS)'
+
+#endif
 
 end subroutine test_indtstep
 

@@ -6,8 +6,7 @@
 !--------------------------------------------------------------------------!
 module testbinary
 !
-! Integrates a binary orbit given input orbital elements
-! print the resulting positions and velocities to file
+! None
 !
 ! :References: None
 !
@@ -15,9 +14,10 @@ module testbinary
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: orbits, physcon, setbinary
+! :Dependencies: physcon, setbinary
 !
  implicit none
+ real, parameter :: pi = 4.*atan(1.)
 
 contains
 
@@ -30,7 +30,6 @@ contains
 !----------------------------------------------------
 subroutine test_binary(m1,m2,a,e,inc,o,w,f,jfile,itex)
  use setbinary, only:set_binary
- use orbits,    only:get_orbital_period
  use physcon,   only:au,solarm,gg,years
  real, intent(in) :: m1,m2,a,e,inc,o,w,f
  integer, intent(in) :: jfile,itex
@@ -53,7 +52,7 @@ subroutine test_binary(m1,m2,a,e,inc,o,w,f,jfile,itex)
  print*,'initial velocity of secondary=',vxyz(1:3,2)
 
  t = 0.
- period = get_orbital_period(m1+m2,a)
+ period = sqrt(4.*pi**2*a**3/(m1+m2))
  nsteps = 2000
  dt = period/nsteps
  udist = au
@@ -61,16 +60,16 @@ subroutine test_binary(m1,m2,a,e,inc,o,w,f,jfile,itex)
  utime = sqrt(udist**3/(gg*umass))
  period_yrs = period*utime/years
  if (itex /= 0) then ! write line to orbits.tex file
-    write(itex,"(6(g9.2,1x,'&',1x),f8.1,1x)") a,e,inc,o,w,f,period_yrs
+    write(itex,"(6(g6.2,1x,'&',1x),f8.1,1x)") a,e,inc,o,w,f,period_yrs
  endif
  ! write trajectory of orbit to file
  write(filename,"(a,i3.3,a)") 'orbit',jfile,'.out'
- print "(a,6(f9.2,1x))",'writing to '//trim(filename)//' aeiowf = ',a,e,inc,o,w,f
+ print "(a,6(f6.2,1x))",'writing to '//trim(filename)//' aeiowf = ',a,e,inc,o,w,f
  open(newunit=lu,file=filename,status='replace')
  write(lu,"('#',3(3x,a))") 'x','y','z'
  write(lu,*) xyz(1:3,2) - xyz(1:3,1)
 
- write(*,"(8(a,'=',1pg10.3,1x),a,'=',1pg10.3,1x)") 'a',a,'e',e,'i',inc,'o',o,'w',w,'f',f,'P',period_yrs,'m1',m1,' m2',m2
+ write(*,"(8(a,'=',1pg8.3,1x),a,'=',1pg8.3,1x)") 'a',a,'e',e,'i',inc,'o',o,'w',w,'f',f,'P',period_yrs,'m1',m1,' m2',m2
  !print*,'period = ',period
  call get_f(m1,m2,xyz,fxyz)
  tsep = 0.

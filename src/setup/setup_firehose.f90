@@ -14,7 +14,7 @@ module setup
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: kernel, part, physcon, units
+! :Dependencies: part, physcon, units
 !
  implicit none
  public :: setpart
@@ -32,7 +32,6 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use units,   only:set_units,umass
  use physcon, only:au,solarm
  use part,    only:igas,xyzmh_ptmass,nptmass,vxyz_ptmass
- use kernel,  only:hfact_default
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -47,13 +46,11 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  time = 0.
  polyk = 0.
  gamma = 5./3.
- hfact = hfact_default
+
  npart = 0
  npartoftype(:) = 0
  massoftype = 0.
  massoftype(igas) = 1.e-12*solarm/umass
- xyzh = 0.
- vxyzu = 0.
 
  nptmass = 1
  if (nptmass > 0) then

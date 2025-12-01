@@ -16,12 +16,13 @@ module setup
 ! :Owner: Daniel Price
 !
 ! :Runtime parameters:
+!   - gamma   : *adiabatic index*
 !   - iselect : * which wave test to run*
 !   - nx      : *resolution (number of particles in x) for -xleft < x < xshock*
 !   - rotated : * rotate wave vector?*
 !
 ! :Dependencies: boundary, dim, geometry, infile_utils, io, mpidomain,
-!   part, physcon, prompting, setup_params, timestep, unifdis
+!   mpiutils, part, physcon, prompting, setup_params, timestep, unifdis
 !
  implicit none
  public :: setpart
@@ -61,12 +62,13 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
                         dxbound,dybound,dzbound
  use part,         only:Bxyz,mhd,periodic,igas
  use io,           only:master
+ use prompting,    only:prompt
+ use mpiutils,     only:bcast_mpi
  use physcon,      only:pi
  use geometry,     only:igeom_rotated,igeom_cartesian,&
                         set_rotation_angles,coord_transform
  use timestep,     only:tmax,dtmax
  use mpidomain,    only:i_belong
- use infile_utils, only:get_options
  integer,           intent(in)    :: id
  integer,           intent(out)   :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -84,6 +86,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
  real :: runit(3),gam1,x0(3),xdot0,x1
  real :: drho,dv(3),dB(3),du
  real :: q0(8),vwave
+ character(len=len(fileprefix)+6) :: setupfile
  procedure(rho_func), pointer :: density_func
 !
 !--general parameters
@@ -100,9 +103,17 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
  ! read setup parameters from the .setup file.
  ! if file does not exist, then ask for user input
  !
- call get_options(trim(fileprefix)//'.setup',id==master,ierr,&
-                  read_setupfile,write_setupfile,interactive_setup)
- if (ierr /= 0) stop 'rerun phantomsetup after editing .setup file'
+ setupfile = trim(fileprefix)//'.setup'
+ call read_setupfile(setupfile,gamma,ierr)
+ if (ierr /= 0) then
+    if (id==master) then
+       call interactive_setup()
+       call write_setupfile(setupfile,gamma)
+       print*,' Edit '//trim(setupfile)//' and rerun phantomsetup'
+    endif
+    stop
+ endif
+ gamma = 5./3.
 !
 !--setup parameters
 !
@@ -162,6 +173,8 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
  else
     polyk = 0.
  endif
+
+ call bcast_mpi(nx)
 !
 !--boundaries
 !
@@ -186,6 +199,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
  totmass = rhozero*dxbound*dybound*dzbound
  massoftype = totmass/npart
  print*,'npart = ',npart,' particle mass = ',massoftype(igas)
+
 
  do i=1,npart
     x1    = dot_product(xyzh(1:3,i),runit)
@@ -473,10 +487,11 @@ end subroutine interactive_setup
 !  Write setup parameters to input file
 !+
 !------------------------------------------
-subroutine write_setupfile(filename)
+subroutine write_setupfile(filename,gamma)
  use infile_utils, only:write_inopt
  use dim,          only:tagline,maxvxyzu
  character(len=*), intent(in) :: filename
+ real,             intent(in) :: gamma
  integer,          parameter  :: lu = 20
  integer                      :: ierr1
 
@@ -496,6 +511,9 @@ subroutine write_setupfile(filename)
  call write_inopt(nx,'nx','resolution (number of particles in x) for -xleft < x < xshock',lu,ierr1)
  if (ierr1 /= 0) write(*,*) 'ERROR writing nx'
 
+ write(lu,"(/,a)") '# Equation-of-state properties'
+ call write_inopt(gamma,'gamma','adiabatic index',lu,ierr1)
+
  close(unit=lu)
 
 end subroutine write_setupfile
@@ -505,11 +523,12 @@ end subroutine write_setupfile
 !  Read setup parameters from input file
 !+
 !------------------------------------------
-subroutine read_setupfile(filename,ierr)
+subroutine read_setupfile(filename,gamma,ierr)
  use infile_utils, only:open_db_from_file,inopts,close_db,read_inopt
  character(len=*), intent(in)  :: filename
  integer,          parameter   :: lu = 21
  integer,          intent(out) :: ierr
+ real,             intent(out) :: gamma
  integer                       :: nerr
  type(inopts), allocatable     :: db(:)
 
@@ -521,6 +540,7 @@ subroutine read_setupfile(filename,ierr)
  call read_inopt(nx,'nx',db,min=8,errcount=nerr)
  call read_inopt(iselect,'iselect',db,min=0,errcount=nerr)
  call read_inopt(rotated,'rotated',db,errcount=nerr)
+ call read_inopt(gamma,'gamma',db,min=1.,errcount=nerr)
 
  if (nerr > 0) then
     print "(1x,a,i2,a)",'setup_wave: ',nerr,' error(s) during read of setup file'

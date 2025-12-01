@@ -14,7 +14,8 @@ module setup
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: boundary, io, kernel, part, physcon, setup_params, slab
+! :Dependencies: boundary, io, mpidomain, part, physcon, prompting,
+!   setup_params, unifdis
 !
  implicit none
  public :: setpart
@@ -31,13 +32,14 @@ contains
 !+
 !----------------------------------------------------------------
 subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,time,fileprefix)
- use setup_params, only:rhozero,ihavesetupB,npart_total
- use slab,         only:set_slab,get_options_slab
- use boundary,     only:xmin
- use part,         only:Bxyz,mhd,igas,maxvxyzu
+ use setup_params, only:rhozero,ihavesetupB
+ use unifdis,      only:set_unifdis
+ use boundary,     only:set_boundary,xmin,ymin,zmin,xmax,ymax,zmax,dxbound,dybound,dzbound
+ use part,         only:Bxyz,mhd,periodic,igas
  use io,           only:master
  use physcon,      only:pi
- use kernel,       only:hfact_default
+ use prompting,    only:prompt
+ use mpidomain,    only:i_belong
  integer,           intent(in)    :: id
  integer,           intent(out)   :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -47,13 +49,23 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  real,              intent(out)   :: polyk,gamma,hfact
  real,              intent(inout) :: time
  character(len=20), intent(in)    :: fileprefix
- integer :: i,ierr,nx
+ integer :: i,maxvxyzu,npartx,maxp
  real    :: bzero,przero,uuzero,gam1
+ real    :: deltax,totmass
+!
+!--boundaries
+!
+ call set_boundary(-0.5,0.5,-0.5,0.5,-0.0625,0.0625)
 !
 !--general parameters
 !
  time = 0.
- hfact = hfact_default
+ hfact = 1.2
+!
+!--setup particles
+!
+ maxp = size(xyzh(1,:))
+ maxvxyzu = size(vxyzu(:,1))
 !
 !--setup parameters
 !
@@ -73,13 +85,20 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 
  print "(/,a)",' Setup for MHD sine problem...'
 
- nx = 64 ! default number of particles in x-direction
- call get_options_slab(trim(fileprefix),id,master,nx,rhozero,ierr)
- if (ierr /= 0) stop 'rerun phantomsetup after editing .setup file'
+ npartx = 64
+ print "(a,f6.2,a)",' (NB: should be multiple of ',(xmax-xmin)/(zmax-zmin),' given box dimensions)'
+ call prompt('Enter number of particles in x ',npartx,0)
+ deltax = dxbound/npartx
 
- ! setup particles and boundaries for slab geometry
- call set_slab(id,master,nx,-0.5,0.5,-0.5,0.5,hfact,npart,npart_total,xyzh,&
-               npartoftype,rhozero,massoftype,igas)
+ call set_unifdis('cubic',id,master,xmin,xmax,ymin,ymax,zmin,zmax,deltax,&
+                  hfact,npart,xyzh,periodic,mask=i_belong)
+
+ npartoftype(:) = 0
+ npartoftype(igas) = npart
+
+ totmass = rhozero*dxbound*dybound*dzbound
+ massoftype = totmass/npart
+ print*,'npart = ',npart,' particle mass = ',massoftype(igas)
 
  do i=1,npart
     vxyzu(1,i) = 0.

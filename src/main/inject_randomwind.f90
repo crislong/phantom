@@ -25,14 +25,13 @@ module inject
 !   - random_type : *random position on the surface, 0 for random, 1 for gaussian*
 !   - theta       : *the tilt inclination of the star or planet (random_type=1)*
 !   - vlag        : *percentage lag in velocity of wind*
-!   - wind_type   : *wind setup (0=asteroidwind, 1=randomwind, 2=boil-off)*
+!   - wind_type   : *wind setup (0=asteroidwind, 1=randomwind)*
 !
-! :Dependencies: evolveplanet, externalforces, infile_utils, io, options,
+! :Dependencies: binaryutils, externalforces, infile_utils, io, options,
 !   part, partinject, physcon, random, units, vectorutils
 !
  use io, only:error
  use physcon, only:pi
- use random,        only:get_random_pos_on_sphere, get_gaussian_pos_on_sphere, ran2
  implicit none
  character(len=*), parameter, public :: inject_type = 'randomwind'
  character(len=20), public :: mdot_str = "5.e8*g/s"
@@ -42,9 +41,6 @@ module inject
  public :: init_inject,inject_particles,write_options_inject,read_options_inject,&
       set_default_options_inject,update_injected_par
 
- real, public :: have_injected = 0.
- real, public :: inject_this_step = 0.
-
  private
 
  real         :: npartperorbit = 1000.     ! particle injection rate in particles per orbit
@@ -53,6 +49,7 @@ module inject
  integer      :: mdot_type     = 0        ! injection rate (0=const, 1=cos(t), 2=r^(-2))
  integer      :: random_type   = 0        ! random position on the surface, 0 for random, 1 for gaussian
  real         :: delta_theta   = 0.5      ! standard deviation for the gaussion distribution (random_type=1)
+ real         :: have_injected = 0.
  real         :: t_old         = 0.
  real         :: r_ref         = 1.       ! reference radius for mdot_type=2
  real         :: theta         = 0.       ! the inclination of the star or planet
@@ -69,11 +66,9 @@ contains
 !+
 !-----------------------------------------------------------------------
 subroutine init_inject(ierr)
- use options, only:need_pressure_on_sinks
  integer, intent(inout) :: ierr
 
  ierr = 0
- if (wind_type==2) need_pressure_on_sinks= .true.
 
 end subroutine init_inject
 
@@ -85,7 +80,7 @@ end subroutine init_inject
 subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
                             npart,npart_old,npartoftype,dtinject)
  use io,            only:fatal
- use part,          only:nptmass,massoftype,igas,hfact,ihsoft,ipbondi,irbondi
+ use part,          only:nptmass,massoftype,igas,hfact,ihsoft
  use partinject,    only:add_or_update_particle
  use physcon,       only:twopi,gg,kboltz,mass_proton_cgs
  use random,        only:get_random_pos_on_sphere, get_gaussian_pos_on_sphere
@@ -93,7 +88,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  use vectorutils,   only:cross_product3D, rotatevec
  use options,       only:iexternalforce
  use externalforces,only:mass1
- use evolveplanet,  only:evolve_planet
+ use binaryutils,   only:get_orbit_bits
  real,    intent(in)    :: time, dtlast
  real,    intent(inout) :: xyzh(:,:), vxyzu(:,:), xyzmh_ptmass(:,:), vxyz_ptmass(:,:)
  integer, intent(inout) :: npart, npart_old
@@ -102,16 +97,9 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  integer :: ierr
  real,    dimension(3)  :: xyz,vxyz,r1,r2,v2,vhat,v1
  integer :: i,ipart,npinject,seed,pt
- real    :: dmdt,rinject,h,u,speed,m1,m2,r,dt
- real    :: dx(3), vecz(3), veczprime(3), rotaxis(3), cs
- real    :: theta_rad,phi_rad,cost,sint,cosp,sinp,mdotacc,mdotwind
- real    :: Minject, frac_extra
-
- !
- !-- no constraint on timestep
- !
- dtinject = huge(dtinject)
- if (dtlast <= 0) return
+ real    :: dmdt,rinject,h,u,speed,inject_this_step,m1,m2,r,dt
+ real    :: dx(3), vecz(3), veczprime(3), rotaxis(3)
+ real    :: theta_rad, phi_rad, cost, sint, cosp, sinp
 
  ! initialise some parameter to avoid warning...
  pt = 1
@@ -120,19 +108,11 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
 
  ! calculate the wind velocity and other quantities for different wind type
  select case (wind_type)
- case(1,2) ! set up random wind
+ case(1) ! set up random wind
     if (inject_pt > nptmass) call fatal('inject_randomwind', 'not enough point masses for inject target, check inject_pt')
-    if (wind_type==2) then
-       rinject = xyzmh_ptmass(irbondi,inject_pt)
-       cs = sqrt(xyzmh_ptmass(4,inject_pt)/rinject)
-       wind_speed = cs
-       call evolve_planet(xyzmh_ptmass(ipbondi,inject_pt),xyzmh_ptmass(irbondi,inject_pt),mdotacc,mdotwind)
-       if (rinject<=xyzmh_ptmass(ihsoft,inject_pt)) call fatal('inject_randomwind', 'Bondi radius not set for wind_type=2')
-    else
-       rinject = in_code_units(r_inject_str, ierr)
-    endif
     r2 = xyzmh_ptmass(1:3,inject_pt)
-    v2        = vxyz_ptmass(1:3,inject_pt)
+    rinject   = in_code_units(r_inject_str, ierr)
+    v2        = vxyz_ptmass(1:3,pt)
     wind_speed = wind_speed_factor*sqrt(xyzmh_ptmass(4, inject_pt)/rinject)
     u         = 0. ! setup is isothermal so utherm is not stored
     h         = hfact
@@ -167,12 +147,9 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  !
  ! Add any dependency on radius to mass injection rate (and convert to code units)
  !
- if (wind_type==2) then
-    dmdt = mdotwind
- else
-    mdot = in_code_units(mdot_str,ierr)
-    dmdt = mdot*mdot_func(r,r_ref) ! r_ref is the radius for which mdot_fund = mdot
- endif
+ mdot = in_code_units(mdot_str,ierr)
+ dmdt = mdot*mdot_func(r,r_ref) ! r_ref is the radius for which mdot_fund = mdot
+
  !
  !-- How many particles do we need to inject?
  !   (Seems to need at least eight gas particles to not crash) <-- This statement may or may not be true...
@@ -180,15 +157,13 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  if (npartoftype(igas) < 8) then
     npinject = 8-npartoftype(igas)
  else
-    ! Calculate how many particles to inject based on the mass injection rate
+    ! Calculate how many extra particles from previous step to now
     dt = time - t_old
-    Minject = dtlast*dmdt
-    npinject = int(Minject/massoftype(igas))
-    ! Add one particle with probability equal to the fractional part
-    frac_extra = Minject/massoftype(igas) - npinject
-    if (ran2(seed) < frac_extra) npinject = npinject + 1
-    ! Save time for next step
+    inject_this_step = dt*dmdt/massoftype(igas)
+    npinject = max(0, int(0.5 + have_injected + inject_this_step - npartoftype(igas) ))
+    ! Save for next step (faster than integrating the whole thing each time)
     t_old = time
+    have_injected = have_injected + inject_this_step
  endif
  !
  !-- set up the tilt of the star, and vectors for rotation
@@ -217,24 +192,20 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        call cross_product3D(veczprime, dx, vhat)
        vxyz      = v2 + wind_speed*vhat
     case default
-       ! Get random position on sphere
-       dx = get_pos_on_sphere(seed, delta_theta)
-       ! Position is planet position + Bondi radius * random direction
-       xyz = r2 + rinject*dx
-       ! Velocity is planet velocity + sound speed * normal direction
-       vxyz = v2 + wind_speed*dx
+       xyz       = r2 + rinject*get_pos_on_sphere(seed, delta_theta)
+       vxyz      = wind_speed*vhat
     end select
     ipart     = npart + 1
     call add_or_update_particle(igas,xyz,vxyz,h,u,ipart,npart,npartoftype,xyzh,vxyzu)
  enddo
 
+ !
+ !-- no constraint on timestep
+ !
+ dtinject = huge(dtinject)
+
 end subroutine inject_particles
 
-!-----------------------------------------------------------------------
-!+
-!  Updates the injected particles
-!+
-!-----------------------------------------------------------------------
 subroutine update_injected_par
  ! -- placeholder function
  ! -- does not do anything and will never be used
@@ -288,16 +259,14 @@ subroutine write_options_inject(iunit)
  use infile_utils, only:write_inopt
  integer, intent(in) :: iunit
 
- call write_inopt(wind_type, 'wind_type', 'wind setup (0=asteroidwind, 1=randomwind, 2=boil-off)', iunit)
- if (wind_type /= 2) then
-    call write_inopt(mdot_str,'mdot','mass injection rate with unit, e.g. 1e8*g/s, 1e-7M_s/yr',iunit)
-    call write_inopt(npartperorbit,'npartperorbit',&
+ call write_inopt(wind_type, 'wind_type', 'wind setup (0=asteroidwind, 1=randomwind)', iunit)
+ call write_inopt(mdot_str,'mdot','mass injection rate with unit, e.g. 1e8*g/s, 1e-7M_s/yr',iunit)
+ call write_inopt(npartperorbit,'npartperorbit',&
                   'particle injection rate in particles/binary orbit',iunit)
-    call write_inopt(vlag,'vlag','percentage lag in velocity of wind',iunit)
-    call write_inopt(mdot_type,'mdot_type','injection rate (0=const, 2=r^(-2))',iunit)
-    if (mdot_type==2) then
-       call write_inopt(r_ref,'r_ref','radius at whieh Mdot=mdot for 1/r^2 injection type',iunit)
-    endif
+ call write_inopt(vlag,'vlag','percentage lag in velocity of wind',iunit)
+ call write_inopt(mdot_type,'mdot_type','injection rate (0=const, 2=r^(-2))',iunit)
+ if (mdot_type==2) then
+    call write_inopt(r_ref,'r_ref','radius at whieh Mdot=mdot for 1/r^2 injection type',iunit)
  endif
  call write_inopt(random_type, 'random_type', 'random position on the surface, 0 for random, 1 for gaussian', iunit)
  if (random_type==1) then
@@ -319,40 +288,65 @@ end subroutine write_options_inject
 !  Reads input options from the input file.
 !+
 !-----------------------------------------------------------------------
-subroutine read_options_inject(db,nerr)
- use infile_utils, only:inopts,read_inopt
- type(inopts), intent(inout) :: db(:)
- integer,      intent(inout) :: nerr
+subroutine read_options_inject(name,valstring,imatch,igotall,ierr)
+ use io, only:fatal
+ character(len=*), intent(in)  :: name,valstring
+ logical,          intent(out) :: imatch,igotall
+ integer,          intent(out) :: ierr
+ integer, save :: ngot = 0
+ character(len=30), parameter :: label = 'read_options_inject'
 
- call read_inopt(wind_type,'wind_type',db,errcount=nerr,min=0,max=2)
- if (wind_type /= 2) then
-    call read_inopt(mdot_str,'mdot',db,errcount=nerr)
-    call read_inopt(npartperorbit,'npartperorbit',db,errcount=nerr,min=0.)
-    call read_inopt(vlag,'vlag',db,errcount=nerr)
-    call read_inopt(mdot_type,'mdot_type',db,errcount=nerr,min=0,max=2)
-    if (mdot_type==2) then
-       call read_inopt(r_ref,'r_ref',db,errcount=nerr,min=0.)
-    endif
- endif
- call read_inopt(random_type,'random_type',db,errcount=nerr,min=0,max=1)
- if (random_type==1) then
-    call read_inopt(delta_theta,'delta_theta',db,errcount=nerr)
-    call read_inopt(theta,'theta',db,errcount=nerr)
-    call read_inopt(phi,'phi',db,errcount=nerr)
- endif
- if (wind_type==1) then
-    call read_inopt(inject_pt,'inject_pt',db,errcount=nerr)
-    call read_inopt(r_inject_str,'r_inject',db,errcount=nerr)
- endif
- call read_inopt(wind_speed_factor,'wind_speed_factor',db,errcount=nerr)
+ imatch  = .true.
+ select case(trim(name))
+ case('mdot')
+    read(valstring,'(A)',iostat=ierr) mdot_str
+    ngot = ngot + 1
+    ! if (mdot  <  0.) call fatal(label,'mdot < 0 in input options')
+ case('wind_type')
+    read(valstring,*,iostat=ierr) wind_type
+    ngot = ngot + 1
+ case('npartperorbit')
+    read(valstring,*,iostat=ierr) npartperorbit
+    ngot = ngot + 1
+    if (npartperorbit < 0.) call fatal(label,'npartperorbit < 0 in input options')
+ case('vlag')
+    read(valstring,*,iostat=ierr) vlag
+    ngot = ngot + 1
+ case('mdot_type')
+    read(valstring,*,iostat=ierr) mdot_type
+    ngot = ngot + 1
+ case('r_ref')
+    read(valstring,*,iostat=ierr) r_ref
+    ngot = ngot + 1
+ case('random_type')
+    read(valstring,*,iostat=ierr) random_type
+    ngot = ngot + 1
+ case('delta_theta')
+    read(valstring,*,iostat=ierr) delta_theta
+    ngot = ngot + 1
+ case('theta')
+    read(valstring,*,iostat=ierr) theta
+    ngot = ngot + 1
+ case('phi')
+    read(valstring,*,iostat=ierr) phi
+    ngot = ngot + 1
+ case('inject_pt')
+    read(valstring,*,iostat=ierr) inject_pt
+    ngot = ngot + 1
+ case('wind_speed_factor')
+    read(valstring,*,iostat=ierr) wind_speed_factor
+    ngot = ngot + 1
+ case('r_inject')
+    read(valstring,'(a)',iostat=ierr) r_inject_str
+    ngot = ngot + 1
+ case default
+    imatch = .false.
+ end select
+
+ igotall = (ngot >= 1)
 
 end subroutine read_options_inject
 
-!-----------------------------------------------------------------------
-!+
-!  Sets default options for the injection module
-!+
-!-----------------------------------------------------------------------
 subroutine set_default_options_inject(flag)
  integer, optional, intent(in) :: flag
 

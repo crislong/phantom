@@ -19,7 +19,7 @@ module unifdis
  use stretchmap, only:rho_func, mass_func
  implicit none
  public :: set_unifdis, get_ny_nz_closepacked, get_xyzmin_xyzmax_exact
- public :: is_valid_lattice, is_closepacked, get_latticetype
+ public :: is_valid_lattice, is_closepacked, latticetype
 
  ! following lines of code allow an optional mask= argument
  ! to setup only certain subsets of the particle domain (used for MPI)
@@ -29,21 +29,10 @@ module unifdis
   end function mask_prototype
  end interface
 
- ! integer codes for the various lattices
  integer, parameter, public :: i_cubic       = 1, &
                                i_closepacked = 2, &
                                i_hexagonal   = 3, &
-                               i_random      = 4, &
-                               i_hcp         = 5
-
- ! human-readable labels for these
- integer, parameter, public  :: ilattice_max = 5
- character(len=*), parameter, public :: latticetype(ilattice_max) = (/ &
-      'cubic      ', &
-      'closepacked', &
-      'hexagonal  ', &
-      'random     ', &
-      'hcp        '/)
+                               i_random      = 4
 
  public :: mask_prototype, mask_true, rho_func
 
@@ -307,9 +296,9 @@ subroutine set_unifdis(lattice,id,master,xmin,xmax,ymin,ymax, &
           xstart = xstart + delx
        endif
 
-       xi = xstart + real(k - 1)*deltax
-       yi = ystart + real(l - 1)*deltay
-       zi = zstart + real(m - 1)*deltaz
+       xi = xstart + float(k - 1)*deltax
+       yi = ystart + float(l - 1)*deltay
+       zi = zstart + float(m - 1)*deltaz
 
        xpartmin = min(xpartmin,xi)
        ypartmin = min(ypartmin,yi)
@@ -329,7 +318,7 @@ subroutine set_unifdis(lattice,id,master,xmin,xmax,ymin,ymax, &
           iparttot = iparttot + 1
           if (i_belong(iparttot)) then
              ipart = ipart + 1
-             if (ipart > maxp) stop 'ipart > maxp: re-run with --maxp=N where N is desired number of particles'
+             if (ipart > maxp) stop 'ipart > maxp: re-compile with MAXP=bigger number'
              xyzh(1,ipart) = xi
              xyzh(2,ipart) = yi
              xyzh(3,ipart) = zi
@@ -495,7 +484,7 @@ subroutine set_unifdis(lattice,id,master,xmin,xmax,ymin,ymax, &
           iparttot = iparttot + 1
           if (i_belong(iparttot)) then
              ipart = ipart + 1
-             if (ipart > maxp) stop 'ipart > maxp: re-run with --maxp=N where N is desired number of particles'
+             if (ipart > maxp) stop 'ipart > maxp: re-compile with MAXP=bigger number'
              xyzh(1,ipart) = xi
              xyzh(2,ipart) = yi
              xyzh(3,ipart) = zi
@@ -551,7 +540,7 @@ subroutine set_unifdis(lattice,id,master,xmin,xmax,ymin,ymax, &
           iparttot = iparttot + 1
           if (i_belong(iparttot)) then
              ipart = ipart + 1
-             if (ipart > maxp) stop 'ipart > maxp: re-run with --maxp=N where N is desired number of particles'
+             if (ipart > maxp) stop 'ipart > maxp: re-compile with MAXP=bigger number'
              xyzh(1,ipart) = xi
              xyzh(2,ipart) = yi
              xyzh(3,ipart) = zi
@@ -740,18 +729,22 @@ end function is_valid_lattice
 !  given integer lattice choice
 !+
 !-------------------------------------------------------------
-function get_latticetype(ilattice) result(latticetype_out)
+function latticetype(ilattice)
  integer, intent(in) :: ilattice
- character(len=11) :: latticetype_out
+ character(len=11) :: latticetype
 
  select case(ilattice)
- case(1:ilattice_max)
-    latticetype_out = latticetype(ilattice)
+ case(i_random)
+    latticetype = 'random'
+ case(i_hexagonal)
+    latticetype = 'hexagonal'
+ case(i_closepacked)
+    latticetype = 'closepacked'
  case default
-    latticetype_out = latticetype(i_closepacked)
+    latticetype = 'cubic'
  end select
 
-end function get_latticetype
+end function latticetype
 
 !---------------------------------------------------------------
 !+

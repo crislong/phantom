@@ -17,7 +17,6 @@ module moddump
 ! :Dependencies: physcon
 !
  implicit none
- character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 
@@ -40,6 +39,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     vxyzu(2,i) = -vzero*cos(2.*pi*xyzh(1,i))*sin(2.*pi*xyzh(2,i))
  enddo
 
+ return
 end subroutine modify_dump
 
 end module moddump

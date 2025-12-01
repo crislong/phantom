@@ -4,7 +4,7 @@
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
-module setsolarsystem
+module setbodies
 !
 ! Setup asteroid orbits using data from the IAU Minor Planet Center
 !
@@ -105,11 +105,10 @@ end subroutine set_minor_planets
 !  from the JPL server
 !+
 !----------------------------------------------------------------
-subroutine add_sun_and_planets(nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,nerr,epoch)
+subroutine add_sun_and_planets(nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,epoch)
  integer, intent(inout) :: nptmass
  real,    intent(inout) :: xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
  real,    intent(in)    :: mtot
- integer, intent(out)   :: nerr
  character(len=*), intent(in), optional :: epoch
  integer,          parameter :: nbodies = 10
  character(len=*), parameter :: planet_name(nbodies) = &
@@ -123,16 +122,14 @@ subroutine add_sun_and_planets(nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,nerr,epoch)
        'saturn ', &
        'uranus ', &
        'neptune'/)
- integer :: i,ierr
+ integer :: i
 
- nerr = 0
  do i=1,nbodies
     if (present(epoch)) then
-       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr,epoch=epoch)
+       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,epoch=epoch)
     else
-       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr)
+       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot)
     endif
-    nerr = nerr + ierr
  enddo
 
 end subroutine add_sun_and_planets
@@ -143,11 +140,10 @@ end subroutine add_sun_and_planets
 !  from the JPL server
 !+
 !----------------------------------------------------------------
-subroutine add_dwarf_planets(nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,nerr,epoch)
+subroutine add_dwarf_planets(nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,epoch)
  integer, intent(inout) :: nptmass
  real,    intent(inout) :: xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
  real,    intent(in)    :: mtot
- integer, intent(out)   :: nerr
  character(len=*), intent(in), optional :: epoch
  integer,          parameter :: nbodies = 5
  character(len=*), parameter :: planet_name(nbodies) = &
@@ -156,16 +152,14 @@ subroutine add_dwarf_planets(nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,nerr,epoch)
          'eris    ', &
          'makemake', &
          'haumea  '/)
- integer :: i,ierr
+ integer :: i
 
- nerr = 0
  do i=1,nbodies
     if (present(epoch)) then
-       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr,epoch=epoch)
+       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,epoch=epoch)
     else
-       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr)
+       call add_body(planet_name(i),nptmass,xyzmh_ptmass,vxyz_ptmass,mtot)
     endif
-    nerr = nerr + ierr
  enddo
 
 end subroutine add_dwarf_planets
@@ -176,7 +170,7 @@ end subroutine add_dwarf_planets
 !  from the JPL server
 !+
 !----------------------------------------------------------------
-subroutine add_body(body_name,nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr,epoch)
+subroutine add_body(body_name,nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,epoch)
  use ephemeris, only:get_ephemeris,nelem
  use units,     only:umass,udist
  use physcon,   only:gg,km,solarm,solarr,earthm,au
@@ -186,15 +180,13 @@ subroutine add_body(body_name,nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr,epoch)
  integer,          intent(inout) :: nptmass
  real,             intent(inout) :: xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
  real,             intent(in)    :: mtot
- integer,          intent(out)   :: ierr
  character(len=*), intent(in), optional :: epoch
  real    :: elems(nelem)
  real    :: xyz_tmp(size(xyzmh_ptmass(:,1)),2),vxyz_tmp(3,2),gm_cgs
  real    :: mbody,rbody,a,e,inc,O,w,f
- integer :: ntmp
+ integer :: ierr,ntmp
  logical :: got_elem(nelem)
 
- ierr = 0
  if (trim(adjustl(lcase(body_name)))=='sun') then
     !
     ! add the Sun, ideally would add here its motion
@@ -215,7 +207,6 @@ subroutine add_body(body_name,nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr,epoch)
  endif
  if (ierr > 0 .or. .not.any(got_elem)) then
     print "(a)",' ERROR: could not read ephemeris data for '//body_name
-    ierr = 1
     return ! skip if error reading ephemeris file
  endif
  a   = elems(1)*km/udist
@@ -227,11 +218,11 @@ subroutine add_body(body_name,nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr,epoch)
  gm_cgs = elems(7)*km**3
  mbody  = (gm_cgs/gg)/umass
  rbody = elems(8)*km/udist
- print "(1x,a,1pg11.4)",   '           m/msun = ',mbody*umass/solarm
- print "(1x,a,1pg11.4)",   '         m/mearth = ',mbody*umass/earthm
- print "(1x,a,1pg11.4,a)", '                a = ',a*udist/au,' au'
- print "(1x,a,1pg11.4,a)", '           radius = ',elems(8),' km'
- print "(1x,a,1pg11.4,a)", '          density = ',elems(9),' g/cm^3'
+ print "(1x,a,1pg10.3)",   '           m/msun = ',mbody*umass/solarm
+ print "(1x,a,1pg10.3)",   '         m/mearth = ',mbody*umass/earthm
+ print "(1x,a,1pg10.4,a)", '                a = ',a*udist/au,' au'
+ print "(1x,a,1pg10.3,a)", '           radius = ',elems(8),' km'
+ print "(1x,a,1pg10.3,a)", '          density = ',elems(9),' g/cm^3'
  ntmp = 0
  call set_binary(mtot,0.,a,e,0.01,rbody,&
       xyz_tmp,vxyz_tmp,ntmp,ierr,incl=inc,&
@@ -248,4 +239,4 @@ subroutine add_body(body_name,nptmass,xyzmh_ptmass,vxyz_ptmass,mtot,ierr,epoch)
 
 end subroutine add_body
 
-end module setsolarsystem
+end module setbodies

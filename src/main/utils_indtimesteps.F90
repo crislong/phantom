@@ -31,9 +31,6 @@ module timestep_ind
  integer, parameter :: ithdt   = 2
  integer, parameter :: itdt1   = 3
  integer, parameter :: ittwas  = 4
- real(kind=4), private :: timeperbin(0:maxbins)
-
- public
 
 contains
 
@@ -52,17 +49,6 @@ end function get_dt
 
 !----------------------------------------------------------------
 !+
-!  reset bin timers
-!+
-!----------------------------------------------------------------
-subroutine reset_time_per_bin()
-
- timeperbin = 0.0
-
-end subroutine reset_time_per_bin
-
-!----------------------------------------------------------------
-!+
 !  If dt is read in from a dump file, then initialise ibin & ibin_old.
 !  Although always called if dt is read in, it is only necessary
 !  for restarts.  This is necessary to prevent nearby particles from
@@ -71,7 +57,7 @@ end subroutine reset_time_per_bin
 !+
 !----------------------------------------------------------------
 subroutine init_ibin(npart,dtmax)
- use part, only:ibin,ibin_old,dt_in
+ use part, only: ibin,ibin_old,dt_in
  integer, intent(in) :: npart
  real,    intent(in) :: dtmax
  real(kind=4)        :: twoepsilon,dt_ini
@@ -111,13 +97,11 @@ end subroutine init_ibin
 !  forces are to be evaluated on the current timestep.
 !+
 !----------------------------------------------------------------
-subroutine set_active_particles(npart,nactive,nalive,nactivetot,nalivetot,iphase,ibin,xyzh)
- use io,       only:iprint,fatal
- use part,     only:isdead_or_accreted,iamtype,isetphase,maxp,all_active,iboundary
- use mpiutils, only:reduceall_mpi
+subroutine set_active_particles(npart,nactive,nalive,iphase,ibin,xyzh)
+ use io,   only:iprint,fatal
+ use part, only:isdead_or_accreted,iamtype,isetphase,maxp,all_active,iboundary
  integer,         intent(in)    :: npart
  integer,         intent(out)   :: nactive,nalive
- integer(kind=8), intent(out)   :: nactivetot,nalivetot
  integer(kind=1), intent(inout) :: iphase(npart),ibin(npart) !iphase(maxp),ibin(maxp)
  real,            intent(in)    :: xyzh(4,maxp)
  integer                        :: i,itype
@@ -172,9 +156,6 @@ subroutine set_active_particles(npart,nactive,nalive,nactivetot,nalivetot,iphase
     all_active = .false.
  endif
 
- nactivetot = reduceall_mpi('+', nactive)
- nalivetot = reduceall_mpi('+', nalive)
-
 end subroutine set_active_particles
 
 !----------------------------------------------------------------
@@ -220,6 +201,7 @@ subroutine change_nbinmax(nbinmax,nbinmaxprev,istepfrac,dtmax,dt)
     write(iprint,"(1x,45('*'))")
  endif
 
+ return
 end subroutine change_nbinmax
 
 !----------------------------------------------------------------
@@ -232,7 +214,7 @@ subroutine get_newbin(dti,dtmax,ibini,allow_decrease,limit_maxbin,dtchar)
  real,            intent(in)    :: dti,dtmax
  integer(kind=1), intent(inout) :: ibini
  logical,         intent(in), optional :: allow_decrease,limit_maxbin
- character(len=*), intent(in), optional :: dtchar
+ character(len=*),intent(in), optional :: dtchar
  integer(kind=1) :: ibin_oldi
  integer         :: ibin_newi
  logical         :: iallow_decrease,ilimit_maxbin
@@ -284,6 +266,7 @@ subroutine get_newbin(dti,dtmax,ibini,allow_decrease,limit_maxbin,dtchar)
  endif
  !print*,'dti = ',dtmax/2**ibini,dti,'dtmax = ',dtmax,' istep = ',2**ibini
 
+ return
 end subroutine get_newbin
 
 !----------------------------------------------------------------
@@ -292,9 +275,9 @@ end subroutine get_newbin
 !  This can only occur at full dumps, thus particles are synchronised
 !+
 !----------------------------------------------------------------
-subroutine decrease_dtmax(npart,nbins,time,dtmax_ifactor,dtmax,ibin,ibin_wake,ibin_dts)
+subroutine decrease_dtmax(npart,nbins,time,dtmax_ifactor,dtmax,ibin,ibin_wake,ibin_sts,ibin_dts)
  integer,         intent(in)    :: npart,nbins,dtmax_ifactor
- integer(kind=1), intent(inout) :: ibin(:),ibin_wake(:)
+ integer(kind=1), intent(inout) :: ibin(:),ibin_wake(:),ibin_sts(:)
  real,            intent(in)    :: time
  real,            intent(inout) :: dtmax,ibin_dts(4,0:nbins)
  integer                        :: i
@@ -332,11 +315,17 @@ subroutine decrease_dtmax(npart,nbins,time,dtmax_ifactor,dtmax,ibin,ibin_wake,ib
  !--Modify the ibins
 !$omp parallel default(none) &
 !$omp shared(npart,ibin,ibin_wake,ibin_rat) &
+#ifdef STS_TIMESTEPS
+!$omp shared(ibin_sts) &
+#endif
 !$omp private(i)
 !$omp do
  do i=1,npart
     ibin(i)      = max(0_1,ibin(i)     -ibin_rat)
     ibin_wake(i) = max(0_1,ibin_wake(i)-ibin_rat)
+#ifdef STS_TIMESTEPS
+    ibin_sts(i)  = max(0_1,ibin_sts(i) -ibin_rat)
+#endif
  enddo
 !$omp enddo
 !$omp end parallel
@@ -349,13 +338,14 @@ end subroutine decrease_dtmax
 !  for individual particle timesteps
 !+
 !----------------------------------------------------------------
-subroutine write_binsummary(npart,nbinmax,dtmax,iphase,ibin,xyzh)
+subroutine write_binsummary(npart,nbinmax,dtmax,timeperbin,iphase,ibin,xyzh)
  use io,       only:iprint,id,master,error
  use part,     only:isdead_or_accreted,iamtype,maxphase,labeltype,maxtypes
  use mpiutils, only:reduce_mpi
  integer,         intent(in) :: npart
  integer(kind=1), intent(in) :: nbinmax
  real,            intent(in) :: dtmax
+ real(kind=4),    intent(in) :: timeperbin(0:maxbins)
  integer(kind=1), intent(in) :: iphase(maxp), ibin(maxp)
  real,            intent(in) :: xyzh(4,maxp)
  real(kind=4)       :: timeperbintot(0:maxbins)
@@ -440,10 +430,11 @@ end subroutine write_binsummary
 !  routine to keep track of cpu time spent in each timestep bin
 !+
 !----------------------------------------------------------------
-subroutine update_time_per_bin(dtcpu,istepfrac,nbinmax,inbin)
+subroutine update_time_per_bin(dtcpu,istepfrac,nbinmax,timeperbin,inbin)
  real(kind=4),    intent(in)    :: dtcpu
  integer,         intent(in)    :: istepfrac
  integer(kind=1), intent(in)    :: nbinmax
+ real(kind=4),    intent(inout) :: timeperbin(0:maxbins)
  integer,         intent(out)   :: inbin
  integer :: i
 

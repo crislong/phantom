@@ -17,7 +17,6 @@ module moddump
 ! :Dependencies: mess_up_SPH, part, prompting, units
 !
  implicit none
- character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 
